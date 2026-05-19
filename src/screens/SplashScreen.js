@@ -2,12 +2,13 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBabyStore } from '../store/useBabyStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { COLORS } from '../constants/colors';
 import { FONT_SIZE, FONT_WEIGHT } from '../constants/theme';
 
 export default function SplashScreen({ navigation }) {
   const load = useBabyStore((s) => s.load);
-  const onboardingDone = useBabyStore((s) => s.onboardingDone);
+  const init = useAuthStore((s) => s.init);
   const insets = useSafeAreaInsets();
 
   const scale = useRef(new Animated.Value(0.7)).current;
@@ -15,7 +16,7 @@ export default function SplashScreen({ navigation }) {
   const tagOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    load().then(() => {
+    Promise.all([load(), init()]).then(() => {
       Animated.sequence([
         Animated.parallel([
           Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 60, friction: 8 }),
@@ -24,8 +25,15 @@ export default function SplashScreen({ navigation }) {
         Animated.timing(tagOpacity, { toValue: 1, duration: 400, useNativeDriver: true, delay: 100 }),
       ]).start(() => {
         setTimeout(() => {
-          const { onboardingDone: done } = useBabyStore.getState();
-          navigation.replace(done ? 'Main' : 'Onboarding');
+          const { user } = useAuthStore.getState();
+          const { onboardingDone } = useBabyStore.getState();
+          if (!user) {
+            navigation.replace('Auth');
+          } else if (!onboardingDone) {
+            navigation.replace('Onboarding');
+          } else {
+            navigation.replace('Main');
+          }
         }, 1200);
       });
     });

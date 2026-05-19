@@ -1,13 +1,13 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uid } from '../utils/formatters';
+import { syncToSupabase } from '../lib/supabase';
 
 const key = (babyId) => `@cw_feeding_${babyId}`;
 
 export const useFeedingStore = create((set, get) => ({
   logs: {},
-  // Live session state
-  session: null, // { type, startTime, leftSecs, rightSecs, activeSide, paused, pauseStart, bottleQty, milkType }
+  session: null,
 
   load: async (babyId) => {
     try {
@@ -127,6 +127,22 @@ export const useFeedingStore = create((set, get) => ({
     try {
       await AsyncStorage.setItem(key(babyId), JSON.stringify(updated));
     } catch (_) {}
+    syncToSupabase('feeding_logs', {
+      id: entry.id,
+      baby_id: babyId,
+      type: entry.type,
+      start_time: entry.startTime,
+      end_time: entry.endTime,
+      left_secs: entry.leftSecs,
+      right_secs: entry.rightSecs,
+      total_secs: entry.totalSecs,
+      bottle_qty: entry.bottleQty,
+      milk_type: entry.milkType,
+      unit: entry.unit,
+      burped: entry.burped,
+      notes: entry.notes,
+      created_at: entry.createdAt,
+    });
     return entry;
   },
 

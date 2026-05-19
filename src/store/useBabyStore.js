@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase, syncToSupabase } from '../lib/supabase';
 
 const STORAGE_KEY = '@cradlewell_babies';
 const ACTIVE_KEY = '@cradlewell_active';
@@ -43,6 +44,7 @@ export const useBabyStore = create((set, get) => ({
     set({ babies, activeBabyId: id, onboardingDone: true });
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(babies));
     await AsyncStorage.setItem(ACTIVE_KEY, id);
+    syncToSupabase('babies', { id: newBaby.id, name: newBaby.name, dob: newBaby.dob, gender: newBaby.gender, created_at: newBaby.createdAt });
   },
 
   setActiveBaby: async (id) => {
@@ -54,6 +56,8 @@ export const useBabyStore = create((set, get) => ({
     const babies = get().babies.map((b) => (b.id === id ? { ...b, ...updates } : b));
     set({ babies });
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(babies));
+    const updated = babies.find((b) => b.id === id);
+    if (updated) syncToSupabase('babies', { id: updated.id, name: updated.name, dob: updated.dob, gender: updated.gender });
   },
 
   deleteBaby: async (id) => {
@@ -64,6 +68,10 @@ export const useBabyStore = create((set, get) => ({
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(remaining));
     if (newActiveId) await AsyncStorage.setItem(ACTIVE_KEY, newActiveId);
     else await AsyncStorage.removeItem(ACTIVE_KEY);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) await supabase.from('babies').delete().eq('id', id).eq('user_id', user.id);
+    } catch (_) {}
   },
 
   setDarkMode: async (val) => {

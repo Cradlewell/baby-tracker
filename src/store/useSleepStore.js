@@ -1,12 +1,13 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uid } from '../utils/formatters';
+import { syncToSupabase } from '../lib/supabase';
 
 const key = (babyId) => `@cw_sleep_${babyId}`;
 
 export const useSleepStore = create((set, get) => ({
   logs: {},
-  session: null, // { startTime, wakeups }
+  session: null,
 
   load: async (babyId) => {
     try {
@@ -54,6 +55,17 @@ export const useSleepStore = create((set, get) => ({
     try {
       await AsyncStorage.setItem(key(babyId), JSON.stringify(updated));
     } catch (_) {}
+    syncToSupabase('sleep_logs', {
+      id: entry.id,
+      baby_id: babyId,
+      start_time: entry.startTime,
+      end_time: entry.endTime,
+      total_secs: entry.totalSecs,
+      wakeups: entry.wakeups,
+      notes: entry.notes,
+      is_nap: entry.isNap,
+      created_at: entry.createdAt,
+    });
     return entry;
   },
 

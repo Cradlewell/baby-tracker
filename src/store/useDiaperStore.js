@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uid } from '../utils/formatters';
+import { syncToSupabase } from '../lib/supabase';
 
 const key = (babyId) => `@cw_diaper_${babyId}`;
 
@@ -29,6 +30,16 @@ export const useDiaperStore = create((set, get) => ({
     try {
       await AsyncStorage.setItem(key(babyId), JSON.stringify(updated));
     } catch (_) {}
+    syncToSupabase('diaper_logs', {
+      id: newEntry.id,
+      baby_id: babyId,
+      event_type: newEntry.eventType,
+      event_time: newEntry.eventTime,
+      changed: newEntry.changed,
+      change_time: newEntry.changeTime,
+      delay_minutes: newEntry.delayMinutes,
+      created_at: newEntry.createdAt,
+    });
     return newEntry;
   },
 

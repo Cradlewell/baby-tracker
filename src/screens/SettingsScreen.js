@@ -8,6 +8,7 @@ import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useBabyStore } from '../store/useBabyStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { COLORS, DARK_COLORS } from '../constants/colors';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING } from '../constants/theme';
 
@@ -38,6 +39,7 @@ export default function SettingsScreen({ navigation }) {
     notificationsEnabled, setNotifications,
     babies, activeBabyId, setActiveBaby, deleteBaby,
   } = useBabyStore();
+  const { signOut, user } = useAuthStore();
   const baby = getActiveBaby();
   const C = darkMode ? DARK_COLORS : COLORS;
   const insets = useSafeAreaInsets();
@@ -244,6 +246,34 @@ export default function SettingsScreen({ navigation }) {
             right={<Ionicons name="chevron-forward" size={16} color={C.textMuted} />}
           />
         </View>
+
+        {/* Account */}
+        {user && (
+          <View style={[styles.card, { backgroundColor: C.card, borderColor: C.border }]}>
+            <Text style={[styles.cardTitle, { color: C.textSecondary }]}>ACCOUNT</Text>
+            <SettingRow
+              C={C}
+              icon="person-circle-outline"
+              color={COLORS.primary}
+              label="Signed in as"
+              sub={user.email}
+            />
+            <View style={[styles.rowDivider, { backgroundColor: C.border }]} />
+            <SettingRow
+              C={C}
+              icon="log-out-outline"
+              color={COLORS.error}
+              label="Sign Out"
+              onPress={() => {
+                Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Sign Out', style: 'destructive', onPress: () => signOut() },
+                ]);
+              }}
+              right={<Ionicons name="chevron-forward" size={16} color={C.textMuted} />}
+            />
+          </View>
+        )}
 
         {/* Danger zone */}
         <View style={[styles.card, { backgroundColor: C.card, borderColor: COLORS.error + '30' }]}>

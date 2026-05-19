@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uid } from '../utils/formatters';
+import { syncToSupabase } from '../lib/supabase';
 
 const key = (babyId) => `@cw_medicine_${babyId}`;
 
@@ -34,6 +35,17 @@ export const useMedicineStore = create((set, get) => ({
     try {
       await AsyncStorage.setItem(key(babyId), JSON.stringify(updated));
     } catch (_) {}
+    syncToSupabase('medicine_logs', {
+      id: newEntry.id,
+      baby_id: babyId,
+      name: newEntry.name,
+      dose: newEntry.dose,
+      unit: newEntry.unit,
+      status: newEntry.status,
+      notes: newEntry.notes,
+      time: newEntry.time,
+      created_at: newEntry.createdAt,
+    });
     return newEntry;
   },
 
