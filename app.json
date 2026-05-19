@@ -20,7 +20,8 @@
           "icon": "./assets/icon.png",
           "color": "#6388FF"
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "ios": {
       "supportsTablet": true,

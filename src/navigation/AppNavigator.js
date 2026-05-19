@@ -11,7 +11,6 @@ import { COLORS, DARK_COLORS } from '../constants/colors';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SHADOW } from '../constants/theme';
 
 import SplashScreen from '../screens/SplashScreen';
-import AuthScreen from '../screens/AuthScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import HomeScreen from '../screens/HomeScreen';
 import FeedingScreen from '../screens/FeedingScreen';
@@ -120,7 +119,6 @@ export default function AppNavigator() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false, cardStyle: { backgroundColor: C.background } }}>
         <Stack.Screen name="Splash" component={SplashScreen} />
-        <Stack.Screen name="Auth" component={AuthScreen} />
         <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         <Stack.Screen name="Main" component={MainTabs} />
         <Stack.Screen name="Diaper" component={DiaperScreen} options={{ presentation: 'modal' }} />

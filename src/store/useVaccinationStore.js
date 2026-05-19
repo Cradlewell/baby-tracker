@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uid } from '../utils/formatters';
-import { syncToSupabase } from '../lib/supabase';
+import { syncToSheets } from '../lib/sheets';
+import { useBabyStore } from './useBabyStore';
 
 const key = (babyId) => `@cw_vaccination_${babyId}`;
 
@@ -101,9 +102,11 @@ export const useVaccinationStore = create((set, get) => ({
     } catch (_) {}
     const updated = list.find((v) => v.id === vaccId);
     if (updated) {
-      syncToSupabase('vaccination_logs', {
+      const babyName = useBabyStore.getState().babies.find(b => b.id === babyId)?.name || '';
+      syncToSheets('vaccination_logs', {
         id: updated.id,
         baby_id: babyId,
+        baby_name: babyName,
         name: updated.name,
         due_date: updated.dueDate,
         completed: updated.completed,

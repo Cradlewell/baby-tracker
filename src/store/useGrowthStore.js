@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uid } from '../utils/formatters';
-import { syncToSupabase } from '../lib/supabase';
+import { syncToSheets } from '../lib/sheets';
+import { useBabyStore } from './useBabyStore';
 
 const key = (babyId) => `@cw_growth_${babyId}`;
 
@@ -36,9 +37,11 @@ export const useGrowthStore = create((set, get) => ({
     try {
       await AsyncStorage.setItem(key(babyId), JSON.stringify(updated));
     } catch (_) {}
-    syncToSupabase('growth_logs', {
+    const babyName = useBabyStore.getState().babies.find(b => b.id === babyId)?.name || '';
+    syncToSheets('growth_logs', {
       id: newEntry.id,
       baby_id: babyId,
+      baby_name: babyName,
       weight: newEntry.weight,
       height: newEntry.height,
       head_circ: newEntry.headCirc,
