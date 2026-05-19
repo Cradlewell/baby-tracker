@@ -1,4 +1,4 @@
-name: Build & Deploy Cradlewell Bloom
+name: Build Cradlewell Bloom
 
 on:
   push:
@@ -30,8 +30,3 @@ jobs:
 
       - name: Build Android AAB
         run: eas build --platform android --profile production --non-interactive
-
-      - name: Submit to Play Store (Internal Testing)
-        run: eas submit --platform android --latest --non-interactive
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
