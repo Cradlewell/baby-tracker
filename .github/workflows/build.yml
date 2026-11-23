@@ -16,7 +16,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Expo SDK 58 / React Native 0.88 and current eas-cli need Node >= 22.13
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -25,7 +26,8 @@ jobs:
       - name: Setup EAS
         uses: expo/expo-github-action@v8
         with:
-          eas-version: latest
+          # Pinned so a new eas-cli release can't silently break the build
+          eas-version: 27.11.0
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Build Android AAB
