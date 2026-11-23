@@ -2,7 +2,8 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBabyStore } from '../store/useBabyStore';
-import { getDeviceId } from '../lib/deviceId';
+import { useFeedingStore } from '../store/useFeedingStore';
+import { useSleepStore } from '../store/useSleepStore';
 import { COLORS } from '../constants/colors';
 import { FONT_SIZE, FONT_WEIGHT } from '../constants/theme';
 
@@ -15,7 +16,11 @@ export default function SplashScreen({ navigation }) {
   const tagOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Promise.all([load(), getDeviceId()]).then(() => {
+    Promise.all([
+      load(),
+      useFeedingStore.getState().restoreSession(),
+      useSleepStore.getState().restoreSession(),
+    ]).then(() => {
       Animated.sequence([
         Animated.parallel([
           Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 60, friction: 8 }),

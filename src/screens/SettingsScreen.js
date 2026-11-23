@@ -5,7 +5,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { deleteBabyAndData, clearAllData } from '../lib/dataReset';
 
 import { useBabyStore } from '../store/useBabyStore';
 import { COLORS, DARK_COLORS } from '../constants/colors';
@@ -34,18 +34,16 @@ function SettingRow({ icon, color, label, sub, right, onPress, C }) {
 
 export default function SettingsScreen({ navigation }) {
   const {
-    getActiveBaby, darkMode, setDarkMode,
-    notificationsEnabled, setNotifications,
-    babies, activeBabyId, setActiveBaby, deleteBaby,
+    darkMode, setDarkMode,
+    babies, activeBabyId, setActiveBaby,
   } = useBabyStore();
-  const baby = getActiveBaby();
   const C = darkMode ? DARK_COLORS : COLORS;
   const insets = useSafeAreaInsets();
 
   const handleExport = () => {
     Alert.alert(
       'Export Data',
-      'Your data is stored locally on this device. Export feature coming in a future update.',
+      'All data is stored only on this device — nothing is uploaded. An export feature is coming in a future update.',
       [{ text: 'OK' }]
     );
   };
@@ -85,7 +83,7 @@ export default function SettingsScreen({ navigation }) {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            await deleteBaby(b.id);
+            await deleteBabyAndData(b.id);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
           },
         },
@@ -96,16 +94,16 @@ export default function SettingsScreen({ navigation }) {
   const handleClearData = () => {
     Alert.alert(
       'Clear All Data',
-      'This will permanently delete all tracking data. This cannot be undone.',
+      'This will permanently delete every baby profile and all tracking data on this device. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            await AsyncStorage.clear();
+            await clearAllData();
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            Alert.alert('Done', 'All data has been cleared. Restart the app.');
+            navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
           },
         },
       ]
@@ -159,7 +157,7 @@ export default function SettingsScreen({ navigation }) {
                   </View>
                   <TouchableOpacity
                     onPress={() => navigation.navigate('EditBaby', { babyId: b.id })}
-                    style={[styles.editBtn, { backgroundColor: COLORS.primaryLight }]}
+                    style={[styles.editBtn, { backgroundColor: C.primaryLight }]}
                     accessibilityRole="button"
                     accessibilityLabel={`Edit ${b.name}'s profile`}
                   >
@@ -201,27 +199,6 @@ export default function SettingsScreen({ navigation }) {
           />
         </View>
 
-        {/* Notifications */}
-        <View style={[styles.card, { backgroundColor: C.card, borderColor: C.border }]}>
-          <Text style={[styles.cardTitle, { color: C.textSecondary }]}>NOTIFICATIONS</Text>
-          <SettingRow
-            C={C}
-            icon="notifications"
-            color={COLORS.primary}
-            label="Push Notifications"
-            sub="Feeding & medicine reminders"
-            right={
-              <Switch
-                value={notificationsEnabled}
-                onValueChange={(v) => { Haptics.selectionAsync(); setNotifications(v); }}
-                trackColor={{ false: COLORS.gray200, true: COLORS.primary }}
-                thumbColor={COLORS.white}
-                accessibilityLabel="Toggle notifications"
-              />
-            }
-          />
-        </View>
-
         {/* Data */}
         <View style={[styles.card, { backgroundColor: C.card, borderColor: C.border }]}>
           <Text style={[styles.cardTitle, { color: C.textSecondary }]}>DATA</Text>
@@ -230,7 +207,7 @@ export default function SettingsScreen({ navigation }) {
             icon="download-outline"
             color={COLORS.growth}
             label="Export Data"
-            sub="Coming soon"
+            sub="Coming soon · data stays on this device"
             onPress={handleExport}
             right={<Ionicons name="chevron-forward" size={16} color={C.textMuted} />}
           />

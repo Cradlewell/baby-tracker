@@ -1,134 +1,133 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { uid } from '../utils/formatters';
-import { syncToSheets } from '../lib/sheets';
-import { useBabyStore } from './useBabyStore';
+import { uid, parseDob } from '../utils/formatters';
 
 const key = (babyId) => `@cw_vaccination_${babyId}`;
 
-const DEFAULT_SCHEDULE = [
+const W = 7; // days per week
+
+// India — Universal Immunization Programme (UIP) national schedule.
+// Region-specific vaccines (e.g. JE) and optional IAP vaccines are not included.
+// `aliases` are names used by earlier versions of the app, so completed records carry over.
+export const SCHEDULE_SOURCE = "India's Universal Immunization Programme (UIP)";
+export const DEFAULT_SCHEDULE = [
   { name: 'BCG', due: 0, description: 'At birth' },
-  { name: 'Hepatitis B (1st)', due: 0, description: 'At birth' },
-  { name: 'OPV (1st)', due: 6 * 7, description: '6 weeks' },
-  { name: 'DTPw/HepB/Hib (1st)', due: 6 * 7, description: '6 weeks' },
-  { name: 'Rotavirus (1st)', due: 6 * 7, description: '6 weeks' },
-  { name: 'PCV (1st)', due: 6 * 7, description: '6 weeks' },
-  { name: 'OPV (2nd)', due: 10 * 7, description: '10 weeks' },
-  { name: 'DTPw/HepB/Hib (2nd)', due: 10 * 7, description: '10 weeks' },
-  { name: 'OPV (3rd)', due: 14 * 7, description: '14 weeks' },
-  { name: 'DTPw/HepB/Hib (3rd)', due: 14 * 7, description: '14 weeks' },
-  { name: 'IPV', due: 14 * 7, description: '14 weeks' },
-  { name: 'Measles (1st)', due: 270, description: '9 months' },
-  { name: 'MMR (1st)', due: 365, description: '12 months' },
-  { name: 'Typhoid', due: 730, description: '24 months' },
+  { name: 'OPV (birth dose)', due: 0, description: 'At birth' },
+  { name: 'Hepatitis B (birth dose)', due: 0, description: 'At birth (within 24 hours)', aliases: ['Hepatitis B (1st)'] },
+
+  { name: 'OPV (1st)', due: 6 * W, description: '6 weeks' },
+  { name: 'Pentavalent (1st)', due: 6 * W, description: '6 weeks · DPT + HepB + Hib', aliases: ['DTPw/HepB/Hib (1st)'] },
+  { name: 'Rotavirus (1st)', due: 6 * W, description: '6 weeks' },
+  { name: 'PCV (1st)', due: 6 * W, description: '6 weeks' },
+  { name: 'fIPV (1st)', due: 6 * W, description: '6 weeks' },
+
+  { name: 'OPV (2nd)', due: 10 * W, description: '10 weeks' },
+  { name: 'Pentavalent (2nd)', due: 10 * W, description: '10 weeks · DPT + HepB + Hib', aliases: ['DTPw/HepB/Hib (2nd)'] },
+  { name: 'Rotavirus (2nd)', due: 10 * W, description: '10 weeks' },
+
+  { name: 'OPV (3rd)', due: 14 * W, description: '14 weeks' },
+  { name: 'Pentavalent (3rd)', due: 14 * W, description: '14 weeks · DPT + HepB + Hib', aliases: ['DTPw/HepB/Hib (3rd)'] },
+  { name: 'Rotavirus (3rd)', due: 14 * W, description: '14 weeks' },
+  { name: 'PCV (2nd)', due: 14 * W, description: '14 weeks' },
+  { name: 'fIPV (2nd)', due: 14 * W, description: '14 weeks', aliases: ['IPV'] },
+
+  { name: 'MR (1st)', due: 270, description: '9 months · Measles-Rubella', aliases: ['Measles (1st)'] },
+  { name: 'PCV booster', due: 270, description: '9 months' },
+
+  { name: 'MR (2nd)', due: 485, description: '16–24 months · Measles-Rubella' },
+  { name: 'DPT booster (1st)', due: 485, description: '16–24 months' },
+  { name: 'OPV booster', due: 485, description: '16–24 months' },
+
+  { name: 'DPT booster (2nd)', due: 5 * 365, description: '5–6 years' },
+  { name: 'Td (10 years)', due: 10 * 365, description: '10 years' },
+  { name: 'Td (16 years)', due: 16 * 365, description: '16 years' },
 ];
 
-export const useVaccinationStore = create((set, get) => ({
-  records: {},
-
-  load: async (babyId, dob) => {
-    try {
-      const json = await AsyncStorage.getItem(key(babyId));
-      const existing = get().records;
-      let records = json ? JSON.parse(json) : null;
-      if ((!records || records.length === 0) && dob) {
-        let birth;
-        if (typeof dob === 'string' && dob.includes('/')) {
-          const [dd, mm, yyyy] = dob.split('/');
-          let year = parseInt(yyyy, 10);
-          if (year < 100) year += 2000;
-          birth = new Date(year, parseInt(mm, 10) - 1, parseInt(dd, 10));
-        } else {
-          birth = new Date(dob);
-        }
-        records = DEFAULT_SCHEDULE.map((v) => ({
-          id: uid(),
-          babyId,
-          name: v.name,
-          description: v.description,
-          dueDate: new Date(birth.getTime() + v.due * 86400000).toISOString(),
-          completed: false,
-          completedDate: null,
-          notes: '',
-        }));
-        await AsyncStorage.setItem(key(babyId), JSON.stringify(records));
-      }
-      set({ records: { ...existing, [babyId]: records || [] } });
-    } catch (_) {}
-  },
-
-  regenerateSchedule: async (babyId, dob) => {
-    let birth;
-    if (typeof dob === 'string' && dob.includes('/')) {
-      const [dd, mm, yyyy] = dob.split('/');
-      let year = parseInt(yyyy, 10);
-      if (year < 100) year += 2000;
-      birth = new Date(year, parseInt(mm, 10) - 1, parseInt(dd, 10));
-    } else {
-      birth = new Date(dob);
+function buildRecords(babyId, dob, existing = []) {
+  const birth = parseDob(dob);
+  if (!birth) return existing;
+  const used = new Set();
+  const records = DEFAULT_SCHEDULE.map((v) => {
+    const names = [v.name, ...(v.aliases || [])];
+    const prev = existing.find((r) => names.includes(r.name) && !used.has(r.id));
+    const dueDate = new Date(birth.getTime() + v.due * 86400000).toISOString();
+    if (prev) {
+      used.add(prev.id);
+      return { ...prev, name: v.name, description: v.description, dueDate };
     }
-    const existing = get().records[babyId] || [];
-    const completed = existing.filter((v) => v.completed);
-    const newRecords = DEFAULT_SCHEDULE.map((v) => {
-      const done = completed.find((c) => c.name === v.name);
-      if (done) return done;
-      return {
-        id: uid(),
-        babyId,
-        name: v.name,
-        description: v.description,
-        dueDate: new Date(birth.getTime() + v.due * 86400000).toISOString(),
-        completed: false,
-        completedDate: null,
-        notes: '',
-      };
-    });
-    set({ records: { ...get().records, [babyId]: newRecords } });
-    try {
-      await AsyncStorage.setItem(key(babyId), JSON.stringify(newRecords));
-    } catch (_) {}
-  },
+    return {
+      id: uid(),
+      babyId,
+      name: v.name,
+      description: v.description,
+      dueDate,
+      completed: false,
+      completedDate: null,
+      notes: '',
+    };
+  });
+  // Never throw away a vaccine the parent already marked as given.
+  const extraCompleted = existing.filter((r) => r.completed && !used.has(r.id));
+  return [...records, ...extraCompleted];
+}
 
-  markCompleted: async (babyId, vaccId, notes = '') => {
-    const { records } = get();
-    const list = (records[babyId] || []).map((v) =>
-      v.id === vaccId
-        ? { ...v, completed: true, completedDate: new Date().toISOString(), notes }
-        : v
-    );
-    set({ records: { ...records, [babyId]: list } });
+const sameRecords = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+export const useVaccinationStore = create((set, get) => {
+  const save = async (babyId, list) => {
+    set((s) => ({ records: { ...s.records, [babyId]: list } }));
     try {
       await AsyncStorage.setItem(key(babyId), JSON.stringify(list));
     } catch (_) {}
-    const updated = list.find((v) => v.id === vaccId);
-    if (updated) {
-      const babyName = useBabyStore.getState().babies.find(b => b.id === babyId)?.name || '';
-      syncToSheets('vaccination_logs', {
-        id: updated.id,
-        baby_id: babyId,
-        baby_name: babyName,
-        name: updated.name,
-        due_date: updated.dueDate,
-        completed: updated.completed,
-        completed_date: updated.completedDate,
-        notes: updated.notes,
+  };
+
+  return {
+    records: {},
+
+    // Loads saved records and brings them up to date with the current schedule.
+    load: async (babyId, dob) => {
+      try {
+        const json = await AsyncStorage.getItem(key(babyId));
+        const saved = json ? JSON.parse(json) : [];
+        const records = buildRecords(babyId, dob, saved);
+        if (!sameRecords(records, saved)) await save(babyId, records);
+        else set((s) => ({ records: { ...s.records, [babyId]: records } }));
+      } catch (_) {}
+    },
+
+    // Re-reads from storage (not memory) so completed vaccines are kept even if this
+    // baby's vaccination screen was never opened in this session.
+    regenerateSchedule: async (babyId, dob) => {
+      await get().load(babyId, dob);
+    },
+
+    markCompleted: async (babyId, vaccId, { notes = '', date } = {}) => {
+      const list = (get().records[babyId] || []).map((v) =>
+        v.id === vaccId
+          ? { ...v, completed: true, completedDate: (date || new Date()).toISOString(), notes }
+          : v
+      );
+      await save(babyId, list);
+    },
+
+    markNotCompleted: async (babyId, vaccId) => {
+      const list = (get().records[babyId] || []).map((v) =>
+        v.id === vaccId ? { ...v, completed: false, completedDate: null } : v
+      );
+      await save(babyId, list);
+    },
+
+    getRecords: (babyId) => get().records[babyId] || [],
+
+    removeBaby: async (babyId) => {
+      set((s) => {
+        const records = { ...s.records };
+        delete records[babyId];
+        return { records };
       });
-    }
-  },
+      await AsyncStorage.removeItem(key(babyId)).catch(() => {});
+    },
 
-  getRecords: (babyId) => get().records[babyId] || [],
-
-  getUpcoming: (babyId) => {
-    const now = new Date();
-    return (get().records[babyId] || [])
-      .filter((v) => !v.completed && new Date(v.dueDate) >= now)
-      .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
-  },
-
-  getOverdue: (babyId) => {
-    const now = new Date();
-    return (get().records[babyId] || [])
-      .filter((v) => !v.completed && new Date(v.dueDate) < now)
-      .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
-  },
-}));
+    reset: () => set({ records: {} }),
+  };
+});

@@ -1,52 +1,60 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  TextInput,
+  TextInput, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
 import { useBabyStore } from '../store/useBabyStore';
-import { useFeedingStore } from '../store/useFeedingStore';
+import { useFeedingStore, sideSecs } from '../store/useFeedingStore';
 import { COLORS, DARK_COLORS } from '../constants/colors';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
 import {
-  formatDurationMins, formatDuration, formatRelative,
+  formatDurationMins, formatDuration, formatRelative, parsePositiveNumber, startOfToday,
 } from '../utils/formatters';
+
+// Re-renders every second while a timer is on screen. The time itself is always
+// computed from saved timestamps, so nothing is lost if renders are skipped.
+function useNow(active = true) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!active) return undefined;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+  return now;
+}
+
+const QTY_STEP = { ml: 10, oz: 0.5 };
+const fmtQty = (n) => String(Math.round(n * 10) / 10);
 
 // ─── Breast Side Picker ───────────────────────────────────────────────────────
 
 function BreastSidePicker({ C, onSelect }) {
   return (
     <View style={styles.sidePickerWrap}>
-      <View style={[styles.totalBadge, { backgroundColor: COLORS.feedingLight, marginBottom: SPACING.md }]}>
+      <View style={[styles.totalBadge, { backgroundColor: C.feedingLight, marginBottom: SPACING.md }]}>
         <Ionicons name="heart" size={16} color={COLORS.feeding} />
         <Text style={[styles.totalLabel, { color: C.textSecondary }]}>
           Breastfeed — Which side to start?
         </Text>
       </View>
       <View style={styles.sidesRow}>
-        <TouchableOpacity
-          onPress={() => onSelect('left')}
-          style={[styles.sideCard, { backgroundColor: C.card, borderColor: C.border }]}
-          accessibilityRole="button"
-          accessibilityLabel="Start from left breast"
-        >
-          <Ionicons name="arrow-back-circle" size={34} color={COLORS.feeding} />
-          <Text style={[styles.sideLabel, { color: COLORS.feeding }]}>LEFT</Text>
-          <Text style={[styles.sidePickerHint, { color: C.textMuted }]}>Start timer on left</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => onSelect('right')}
-          style={[styles.sideCard, { backgroundColor: C.card, borderColor: C.border }]}
-          accessibilityRole="button"
-          accessibilityLabel="Start from right breast"
-        >
-          <Ionicons name="arrow-forward-circle" size={34} color={COLORS.feeding} />
-          <Text style={[styles.sideLabel, { color: COLORS.feeding }]}>RIGHT</Text>
-          <Text style={[styles.sidePickerHint, { color: C.textMuted }]}>Start timer on right</Text>
-        </TouchableOpacity>
+        {['left', 'right'].map((side) => (
+          <TouchableOpacity
+            key={side}
+            onPress={() => onSelect(side)}
+            style={[styles.sideCard, { backgroundColor: C.card, borderColor: C.border }]}
+            accessibilityRole="button"
+            accessibilityLabel={`Start from ${side} breast`}
+          >
+            <Ionicons name={side === 'left' ? 'arrow-back-circle' : 'arrow-forward-circle'} size={34} color={COLORS.feeding} />
+            <Text style={[styles.sideLabel, { color: COLORS.feeding }]}>{side.toUpperCase()}</Text>
+            <Text style={[styles.sidePickerHint, { color: C.textMuted }]}>Start timer on {side}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
     </View>
   );
@@ -54,23 +62,16 @@ function BreastSidePicker({ C, onSelect }) {
 
 // ─── Breastfeeding Live Timer ─────────────────────────────────────────────────
 
-function BreastfeedTimer({ C, babyId, onEnd }) {
-  const {
-    session, tickSession, switchSide, pauseSession, resumeSession,
-    toggleBurped, endSession,
-  } = useFeedingStore();
-  const intervalRef = useRef(null);
-
-  useEffect(() => {
-    intervalRef.current = setInterval(() => {
-      if (!useFeedingStore.getState().session?.paused) tickSession();
-    }, 1000);
-    return () => clearInterval(intervalRef.current);
-  }, []);
+function BreastfeedTimer({ C, onEnd }) {
+  const session = useFeedingStore((s) => s.session);
+  const { switchSide, pauseSession, resumeSession, toggleBurped, endSession } = useFeedingStore.getState();
+  const now = useNow(!!session && !session.paused);
+  const [ending, setEnding] = useState(false);
 
   if (!session) return null;
-  const { leftSecs, rightSecs, activeSide, paused, burped } = session;
-  const totalSecs = leftSecs + rightSecs;
+  const { activeSide, paused, burped } = session;
+  const leftSecs = sideSecs(session, 'left', now);
+  const rightSecs = sideSecs(session, 'right', now);
 
   const handleSwitch = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -78,48 +79,56 @@ function BreastfeedTimer({ C, babyId, onEnd }) {
   };
 
   const handleEnd = async () => {
-    clearInterval(intervalRef.current);
+    if (ending) return;
+    setEnding(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const entry = await endSession(babyId);
+    const entry = await endSession();
     onEnd(entry);
+  };
+
+  const renderSide = (side, secs) => {
+    const active = activeSide === side;
+    return (
+      <TouchableOpacity
+        onPress={() => !active && handleSwitch()}
+        style={[
+          styles.sideCard,
+          { backgroundColor: C.card, borderColor: C.border },
+          active && styles.sideCardActive,
+          active && { backgroundColor: C.feedingLight },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel={`${side} side`}
+        accessibilityState={{ selected: active }}
+      >
+        <Ionicons
+          name={active ? 'radio-button-on' : 'radio-button-off'}
+          size={18}
+          color={active ? COLORS.feeding : C.textMuted}
+        />
+        <Text style={[styles.sideLabel, { color: active ? COLORS.feeding : C.textSecondary }]}>
+          {side.toUpperCase()}
+        </Text>
+        <Text style={[styles.sideTime, { color: active ? COLORS.feeding : C.text }]}>
+          {formatDurationMins(secs)}
+        </Text>
+        {active && !paused && <View style={styles.activeDot} />}
+      </TouchableOpacity>
+    );
   };
 
   return (
     <View style={styles.timerContainer}>
-      <View style={styles.totalBadge}>
+      <View style={[styles.totalBadge, { backgroundColor: C.feedingLight }]}>
         <Ionicons name="time-outline" size={16} color={COLORS.feeding} />
-        <Text style={[styles.totalLabel, { color: C.textSecondary }]}>Total</Text>
+        <Text style={[styles.totalLabel, { color: C.textSecondary }]}>{paused ? 'Paused' : 'Total'}</Text>
         <Text style={[styles.totalTime, { color: COLORS.feeding }]}>
-          {formatDurationMins(totalSecs)}
+          {formatDurationMins(leftSecs + rightSecs)}
         </Text>
       </View>
 
       <View style={styles.sidesRow}>
-        <TouchableOpacity
-          onPress={() => activeSide !== 'left' && handleSwitch()}
-          style={[
-            styles.sideCard,
-            { backgroundColor: C.card, borderColor: C.border },
-            activeSide === 'left' && styles.sideCardActive,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Left side"
-          accessibilityState={{ selected: activeSide === 'left' }}
-        >
-          <Ionicons
-            name={activeSide === 'left' ? 'radio-button-on' : 'radio-button-off'}
-            size={18}
-            color={activeSide === 'left' ? COLORS.feeding : C.textMuted}
-          />
-          <Text style={[styles.sideLabel, { color: activeSide === 'left' ? COLORS.feeding : C.textSecondary }]}>
-            LEFT
-          </Text>
-          <Text style={[styles.sideTime, { color: activeSide === 'left' ? COLORS.feeding : C.text }]}>
-            {formatDurationMins(leftSecs)}
-          </Text>
-          {activeSide === 'left' && !paused && <View style={styles.activeDot} />}
-        </TouchableOpacity>
-
+        {renderSide('left', leftSecs)}
         <TouchableOpacity
           onPress={handleSwitch}
           style={[styles.switchBtn, { backgroundColor: COLORS.feeding + '18' }]}
@@ -128,35 +137,11 @@ function BreastfeedTimer({ C, babyId, onEnd }) {
         >
           <Ionicons name="swap-horizontal" size={22} color={COLORS.feeding} />
         </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => activeSide !== 'right' && handleSwitch()}
-          style={[
-            styles.sideCard,
-            { backgroundColor: C.card, borderColor: C.border },
-            activeSide === 'right' && styles.sideCardActive,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Right side"
-          accessibilityState={{ selected: activeSide === 'right' }}
-        >
-          <Ionicons
-            name={activeSide === 'right' ? 'radio-button-on' : 'radio-button-off'}
-            size={18}
-            color={activeSide === 'right' ? COLORS.feeding : C.textMuted}
-          />
-          <Text style={[styles.sideLabel, { color: activeSide === 'right' ? COLORS.feeding : C.textSecondary }]}>
-            RIGHT
-          </Text>
-          <Text style={[styles.sideTime, { color: activeSide === 'right' ? COLORS.feeding : C.text }]}>
-            {formatDurationMins(rightSecs)}
-          </Text>
-          {activeSide === 'right' && !paused && <View style={styles.activeDot} />}
-        </TouchableOpacity>
+        {renderSide('right', rightSecs)}
       </View>
 
       <Text style={[styles.switchHint, { color: C.textMuted }]}>
-        Tap the other side card to switch · Tap the arrows to force switch
+        Tap the other side to switch · The timer keeps running if you lock your phone
       </Text>
 
       <TouchableOpacity
@@ -187,7 +172,8 @@ function BreastfeedTimer({ C, babyId, onEnd }) {
 
         <TouchableOpacity
           onPress={handleEnd}
-          style={[styles.endBtn, { backgroundColor: COLORS.feeding }]}
+          disabled={ending}
+          style={[styles.endBtn, { backgroundColor: COLORS.feeding, opacity: ending ? 0.6 : 1 }]}
           accessibilityRole="button"
           accessibilityLabel="End feeding"
         >
@@ -202,9 +188,18 @@ function BreastfeedTimer({ C, babyId, onEnd }) {
 // ─── Bottle Prepare Form ──────────────────────────────────────────────────────
 
 function BottlePrepForm({ C, milkType, setMilkType, unit, setUnit, preparedQty, setPreparedQty, onStart }) {
+  const step = QTY_STEP[unit];
+  const qty = parsePositiveNumber(preparedQty);
+  const changeUnit = (u) => {
+    if (u === unit) return;
+    // Convert the current amount so switching units doesn't change the real quantity.
+    if (qty) setPreparedQty(fmtQty(u === 'oz' ? qty / 29.5735 : qty * 29.5735));
+    setUnit(u);
+  };
+
   return (
     <View style={styles.bottleForm}>
-      <View style={[styles.totalBadge, { backgroundColor: COLORS.feedingLight, marginBottom: SPACING.sm }]}>
+      <View style={[styles.totalBadge, { backgroundColor: C.feedingLight, marginBottom: SPACING.sm }]}>
         <Ionicons name="beaker" size={16} color={COLORS.feeding} />
         <Text style={[styles.totalLabel, { color: C.textSecondary }]}>How much did you prepare?</Text>
       </View>
@@ -219,11 +214,16 @@ function BottlePrepForm({ C, milkType, setMilkType, unit, setUnit, preparedQty, 
           <TouchableOpacity
             key={t.value}
             onPress={() => setMilkType(t.value)}
-            style={[styles.typePill, milkType === t.value && styles.typePillActive]}
+            style={[
+              styles.typePill,
+              { backgroundColor: C.card, borderColor: C.border },
+              milkType === t.value && styles.typePillActive,
+              milkType === t.value && { backgroundColor: C.feedingLight },
+            ]}
             accessibilityRole="radio"
             accessibilityState={{ selected: milkType === t.value }}
           >
-            <Text style={[styles.typePillText, milkType === t.value && styles.typePillTextActive]}>
+            <Text style={[styles.typePillText, { color: C.textSecondary }, milkType === t.value && styles.typePillTextActive]}>
               {t.label}
             </Text>
           </TouchableOpacity>
@@ -233,7 +233,7 @@ function BottlePrepForm({ C, milkType, setMilkType, unit, setUnit, preparedQty, 
       <Text style={[styles.formSection, { color: C.textSecondary, marginTop: SPACING.sm }]}>PREPARED QUANTITY</Text>
       <View style={styles.qtyRow}>
         <TouchableOpacity
-          onPress={() => setPreparedQty(String(Math.max(0, parseInt(preparedQty || '0') - 10)))}
+          onPress={() => setPreparedQty(fmtQty(Math.max(0, (qty || 0) - step)))}
           style={[styles.qtyBtn, { backgroundColor: C.card }]}
           accessibilityRole="button"
           accessibilityLabel="Decrease quantity"
@@ -244,12 +244,12 @@ function BottlePrepForm({ C, milkType, setMilkType, unit, setUnit, preparedQty, 
           style={[styles.qtyInput, { color: C.text, backgroundColor: C.card }]}
           value={preparedQty}
           onChangeText={setPreparedQty}
-          keyboardType="number-pad"
+          keyboardType="decimal-pad"
           textAlign="center"
           accessibilityLabel="Prepared quantity"
         />
         <TouchableOpacity
-          onPress={() => setPreparedQty(String(parseInt(preparedQty || '0') + 10))}
+          onPress={() => setPreparedQty(fmtQty((qty || 0) + step))}
           style={[styles.qtyBtn, { backgroundColor: C.card }]}
           accessibilityRole="button"
           accessibilityLabel="Increase quantity"
@@ -260,12 +260,12 @@ function BottlePrepForm({ C, milkType, setMilkType, unit, setUnit, preparedQty, 
           {['ml', 'oz'].map((u) => (
             <TouchableOpacity
               key={u}
-              onPress={() => setUnit(u)}
-              style={[styles.unitBtn, unit === u && styles.unitBtnActive]}
+              onPress={() => changeUnit(u)}
+              style={[styles.unitBtn, { backgroundColor: C.card }, unit === u && styles.unitBtnActive]}
               accessibilityRole="radio"
               accessibilityState={{ selected: unit === u }}
             >
-              <Text style={[styles.unitText, unit === u && styles.unitTextActive]}>{u}</Text>
+              <Text style={[styles.unitText, { color: C.textSecondary }, unit === u && styles.unitTextActive]}>{u}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -273,7 +273,8 @@ function BottlePrepForm({ C, milkType, setMilkType, unit, setUnit, preparedQty, 
 
       <TouchableOpacity
         onPress={onStart}
-        style={[styles.startBtn, { backgroundColor: COLORS.feeding, marginTop: SPACING.lg }]}
+        disabled={!qty}
+        style={[styles.startBtn, { backgroundColor: COLORS.feeding, marginTop: SPACING.lg, opacity: qty ? 1 : 0.5 }]}
         accessibilityRole="button"
         accessibilityLabel="Start feeding timer"
       >
@@ -286,58 +287,43 @@ function BottlePrepForm({ C, milkType, setMilkType, unit, setUnit, preparedQty, 
 
 // ─── Bottle Timing View ───────────────────────────────────────────────────────
 
-function BottleTimingView({ C, preparedQty, unit, onDone }) {
-  const { session, tickSession, pauseSession, resumeSession } = useFeedingStore();
-  const intervalRef = useRef(null);
-
-  useEffect(() => {
-    intervalRef.current = setInterval(() => {
-      if (!useFeedingStore.getState().session?.paused) tickSession();
-    }, 1000);
-    return () => clearInterval(intervalRef.current);
-  }, []);
-
-  if (!session) return null;
-  const { leftSecs, paused } = session;
-
-  const handleDone = () => {
-    clearInterval(intervalRef.current);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onDone();
-  };
+function BottleTimingView({ C, session }) {
+  const { pauseSession, resumeSession, finishTiming } = useFeedingStore.getState();
+  const now = useNow(!session.paused);
+  const elapsed = sideSecs(session, 'left', now);
 
   return (
     <View style={styles.timerContainer}>
-      <View style={[styles.totalBadge, { backgroundColor: COLORS.feedingLight }]}>
+      <View style={[styles.totalBadge, { backgroundColor: C.feedingLight }]}>
         <Ionicons name="beaker" size={16} color={COLORS.feeding} />
         <Text style={[styles.totalLabel, { color: C.textSecondary }]}>
-          Bottle Feeding · {preparedQty} {unit} prepared
+          Bottle Feeding · {session.preparedQty} {session.unit} prepared
         </Text>
       </View>
 
       <View style={[styles.bottleTimerCenter, { backgroundColor: C.card, borderColor: C.border }]}>
         <Text style={[styles.formSection, { color: C.textMuted, marginBottom: 4 }]}>TIME ELAPSED</Text>
         <Text style={[styles.totalTime, { color: COLORS.feeding, fontSize: FONT_SIZE.hero }]}>
-          {formatDurationMins(leftSecs)}
+          {formatDurationMins(elapsed)}
         </Text>
-        {paused && (
+        {session.paused && (
           <Text style={[styles.switchHint, { color: C.textMuted, marginTop: 4 }]}>Paused</Text>
         )}
       </View>
 
       <View style={styles.controlRow}>
         <TouchableOpacity
-          onPress={() => { Haptics.selectionAsync(); paused ? resumeSession() : pauseSession(); }}
+          onPress={() => { Haptics.selectionAsync(); session.paused ? resumeSession() : pauseSession(); }}
           style={[styles.controlBtn, { backgroundColor: C.card, borderColor: C.border }]}
           accessibilityRole="button"
-          accessibilityLabel={paused ? 'Resume' : 'Pause'}
+          accessibilityLabel={session.paused ? 'Resume' : 'Pause'}
         >
-          <Ionicons name={paused ? 'play' : 'pause'} size={22} color={C.text} />
-          <Text style={[styles.controlBtnText, { color: C.text }]}>{paused ? 'Resume' : 'Pause'}</Text>
+          <Ionicons name={session.paused ? 'play' : 'pause'} size={22} color={C.text} />
+          <Text style={[styles.controlBtnText, { color: C.text }]}>{session.paused ? 'Resume' : 'Pause'}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={handleDone}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); finishTiming(); }}
           style={[styles.endBtn, { backgroundColor: COLORS.feeding }]}
           accessibilityRole="button"
           accessibilityLabel="Done feeding"
@@ -352,36 +338,38 @@ function BottleTimingView({ C, preparedQty, unit, onDone }) {
 
 // ─── Bottle Finish Form ───────────────────────────────────────────────────────
 
-function BottleFinishForm({ C, session, preparedQty, unit, consumedQty, setConsumedQty, onSave }) {
-  const duration = session?.leftSecs || 0;
-  const maxQty = parseFloat(preparedQty) || 0;
+function BottleFinishForm({ C, session, consumedQty, setConsumedQty, onSave, saving }) {
+  const duration = sideSecs(session, 'left');
+  const maxQty = session.preparedQty || 0;
+  const unit = session.unit || 'ml';
+  const step = unit === 'oz' ? 0.5 : 5;
 
   const handleConsumedChange = (v) => {
-    const num = parseFloat(v) || 0;
-    setConsumedQty(num > maxQty ? String(maxQty) : v);
+    const num = parsePositiveNumber(v) || 0;
+    setConsumedQty(num > maxQty ? fmtQty(maxQty) : v);
   };
 
   const stepConsumed = (delta) => {
-    const next = Math.min(maxQty, Math.max(0, (parseInt(consumedQty || '0') + delta)));
-    setConsumedQty(String(next));
+    const current = parsePositiveNumber(consumedQty) || 0;
+    setConsumedQty(fmtQty(Math.min(maxQty, Math.max(0, current + delta))));
   };
 
   return (
     <View style={styles.bottleForm}>
-      <View style={[styles.totalBadge, { backgroundColor: COLORS.feedingLight, marginBottom: SPACING.sm }]}>
+      <View style={[styles.totalBadge, { backgroundColor: C.feedingLight, marginBottom: SPACING.sm }]}>
         <Ionicons name="time-outline" size={16} color={COLORS.feeding} />
         <Text style={[styles.totalLabel, { color: C.textSecondary }]}>
-          Duration: {formatDurationMins(duration)} · Prepared: {preparedQty} {unit}
+          Duration: {formatDurationMins(duration)} · Prepared: {maxQty} {unit}
         </Text>
       </View>
 
       <Text style={[styles.formSection, { color: C.textSecondary }]}>HOW MUCH DID BABY CONSUME? ({unit})</Text>
       <Text style={[styles.switchHint, { color: C.textMuted, marginTop: -8 }]}>
-        Max: {preparedQty} {unit}
+        Max: {maxQty} {unit}
       </Text>
       <View style={styles.qtyRow}>
         <TouchableOpacity
-          onPress={() => stepConsumed(-5)}
+          onPress={() => stepConsumed(-step)}
           style={[styles.qtyBtn, { backgroundColor: C.card }]}
           accessibilityRole="button"
           accessibilityLabel="Decrease consumed"
@@ -392,12 +380,12 @@ function BottleFinishForm({ C, session, preparedQty, unit, consumedQty, setConsu
           style={[styles.qtyInput, { color: C.text, backgroundColor: C.card }]}
           value={consumedQty}
           onChangeText={handleConsumedChange}
-          keyboardType="number-pad"
+          keyboardType="decimal-pad"
           textAlign="center"
           accessibilityLabel="Consumed quantity"
         />
         <TouchableOpacity
-          onPress={() => stepConsumed(5)}
+          onPress={() => stepConsumed(step)}
           style={[styles.qtyBtn, { backgroundColor: C.card }]}
           accessibilityRole="button"
           accessibilityLabel="Increase consumed"
@@ -408,23 +396,22 @@ function BottleFinishForm({ C, session, preparedQty, unit, consumedQty, setConsu
       </View>
 
       <View style={[styles.prepSummary, { backgroundColor: C.card, borderColor: C.border }]}>
-        <View style={styles.prepSummaryRow}>
-          <Text style={[styles.prepSummaryLabel, { color: C.textSecondary }]}>Prepared</Text>
-          <Text style={[styles.prepSummaryVal, { color: C.text }]}>{preparedQty} {unit}</Text>
-        </View>
-        <View style={styles.prepSummaryRow}>
-          <Text style={[styles.prepSummaryLabel, { color: C.textSecondary }]}>Consumed</Text>
-          <Text style={[styles.prepSummaryVal, { color: COLORS.feeding }]}>{consumedQty || 0} {unit}</Text>
-        </View>
-        <View style={styles.prepSummaryRow}>
-          <Text style={[styles.prepSummaryLabel, { color: C.textSecondary }]}>Duration</Text>
-          <Text style={[styles.prepSummaryVal, { color: C.textMuted }]}>{formatDurationMins(duration)}</Text>
-        </View>
+        {[
+          ['Prepared', `${maxQty} ${unit}`, C.text],
+          ['Consumed', `${consumedQty || 0} ${unit}`, COLORS.feeding],
+          ['Duration', formatDurationMins(duration), C.textMuted],
+        ].map(([label, value, color]) => (
+          <View key={label} style={styles.prepSummaryRow}>
+            <Text style={[styles.prepSummaryLabel, { color: C.textSecondary }]}>{label}</Text>
+            <Text style={[styles.prepSummaryVal, { color }]}>{value}</Text>
+          </View>
+        ))}
       </View>
 
       <TouchableOpacity
         onPress={onSave}
-        style={[styles.endBtn, { backgroundColor: COLORS.feeding, marginTop: SPACING.lg }]}
+        disabled={saving}
+        style={[styles.endBtn, { backgroundColor: COLORS.feeding, marginTop: SPACING.lg, opacity: saving ? 0.6 : 1 }]}
         accessibilityRole="button"
         accessibilityLabel="Save bottle feed"
       >
@@ -449,24 +436,22 @@ function FeedLogItem({ log, C }) {
     const prepared = log.preparedQty;
     const unit = log.unit || 'ml';
     const dur = log.totalSecs > 0 ? ` · ${formatDuration(log.totalSecs)}` : '';
-    if (prepared !== undefined && prepared > 0) {
-      subText = `${consumed} of ${prepared} ${unit} consumed${dur}`;
-    } else {
-      subText = `${consumed || 0} ${unit}${dur}`;
-    }
+    subText = prepared > 0
+      ? `${consumed} of ${prepared} ${unit} consumed${dur}`
+      : `${consumed || 0} ${unit}${dur}`;
   }
   return (
     <View style={[styles.logItem, { backgroundColor: C.card, borderColor: C.border }]}>
-      <View style={[styles.logIcon, { backgroundColor: COLORS.feedingLight }]}>
+      <View style={[styles.logIcon, { backgroundColor: C.feedingLight }]}>
         <Ionicons name={isBreast ? 'heart' : 'beaker'} size={18} color={COLORS.feeding} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={[styles.logTitle, { color: C.text }]}>
-          {log.type === 'breast' ? 'Breastfeed' : 'Bottle Feed'}
+          {isBreast ? 'Breastfeed' : 'Bottle Feed'}
         </Text>
         <Text style={[styles.logSub, { color: C.textSecondary }]}>{subText}</Text>
       </View>
-      <Text style={[styles.logTime, { color: C.textMuted }]}>{formatRelative(log.createdAt)}</Text>
+      <Text style={[styles.logTime, { color: C.textMuted }]}>{formatRelative(log.startTime || log.createdAt)}</Text>
     </View>
   );
 }
@@ -474,23 +459,22 @@ function FeedLogItem({ log, C }) {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function FeedingScreen() {
-  const { getActiveBaby, darkMode } = useBabyStore();
+  const { getActiveBaby, darkMode, babies, setActiveBaby } = useBabyStore();
   const baby = getActiveBaby();
   const babyId = baby?.id;
   const C = darkMode ? DARK_COLORS : COLORS;
   const insets = useSafeAreaInsets();
 
-  const { session, startSession, cancelSession, pauseSession, load, getLogs, endSession } = useFeedingStore();
-  const logs = getLogs(babyId);
+  const session = useFeedingStore((s) => s.session);
+  const logs = useFeedingStore((s) => s.logs[babyId]) || [];
+  const { startSession, cancelSession, load, endSession } = useFeedingStore.getState();
 
-  const [feedType, setFeedType] = useState(baby?.feedingType || 'breast');
+  const [feedType, setFeedType] = useState(baby?.feedingType === 'bottle' ? 'bottle' : 'breast');
   const [showSuccess, setShowSuccess] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // Breast flow
   const [breastSidePicking, setBreastSidePicking] = useState(false);
-
-  // Bottle multi-step flow
-  const [bottleStage, setBottleStage] = useState(null); // null | 'prepare' | 'timing' | 'finish'
+  const [bottlePreparing, setBottlePreparing] = useState(false);
   const [milkType, setMilkType] = useState('formula');
   const [unit, setUnit] = useState('ml');
   const [preparedQty, setPreparedQty] = useState('90');
@@ -500,79 +484,87 @@ export default function FeedingScreen() {
     if (babyId) load(babyId);
   }, [babyId]);
 
+  // A timer that belongs to a different baby than the one on screen.
+  const otherBabySession = session && session.babyId !== babyId ? session : null;
+  const mySession = session && session.babyId === babyId ? session : null;
+  const otherBabyName = otherBabySession
+    ? babies.find((b) => b.id === otherBabySession.babyId)?.name || 'another baby'
+    : null;
+
+  // When the bottle timer is done, pre-fill "consumed" with the prepared amount.
+  useEffect(() => {
+    if (mySession?.type === 'bottle' && mySession.stage === 'finish' && consumedQty === '') {
+      setConsumedQty(fmtQty(mySession.preparedQty || 0));
+    }
+  }, [mySession?.stage]);
+
   const handleStart = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (feedType === 'bottle') {
-      setBottleStage('prepare');
-    } else {
-      setBreastSidePicking(true);
-    }
+    if (feedType === 'bottle') setBottlePreparing(true);
+    else setBreastSidePicking(true);
   };
 
   const handleBreastSideSelect = (side) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setBreastSidePicking(false);
-    startSession(feedType, side);
+    startSession(babyId, 'breast', side);
   };
 
   const handleBottleStartTimer = () => {
+    const prepared = parsePositiveNumber(preparedQty);
+    if (!prepared) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    startSession('bottle', 'left');
-    useFeedingStore.setState((s) => ({
-      session: s.session
-        ? { ...s.session, milkType, unit, preparedQty: parseFloat(preparedQty) || 0 }
-        : null,
-    }));
-    setBottleStage('timing');
+    setBottlePreparing(false);
+    setConsumedQty('');
+    startSession(babyId, 'bottle', 'left', { milkType, unit, preparedQty: prepared });
   };
 
-  const handleBottleTimerDone = () => {
-    pauseSession();
-    setConsumedQty(preparedQty);
-    setBottleStage('finish');
-  };
-
-  const handleBottleSave = async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const consumed = parseFloat(consumedQty) || 0;
-    const prepared = parseFloat(preparedQty) || 0;
-    useFeedingStore.setState((s) => ({
-      session: s.session
-        ? {
-            ...s.session,
-            bottleQty: consumed,
-            milkType,
-            unit,
-            preparedQty: prepared,
-            consumedQty: consumed,
-            remainingQty: 0,
-          }
-        : null,
-    }));
-    const entry = await endSession(babyId);
-    setBottleStage(null);
-    handleEnd(entry);
-  };
-
-  const handleEnd = () => {
+  const showSaved = () => {
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 3000);
   };
 
-  const handleCancel = () => {
-    cancelSession();
+  const handleBottleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    await endSession({ consumedQty: parsePositiveNumber(consumedQty) || 0 });
+    setConsumedQty('');
+    setSaving(false);
+    showSaved();
+  };
+
+  const resetLocal = () => {
     setBreastSidePicking(false);
-    setBottleStage(null);
+    setBottlePreparing(false);
     setConsumedQty('');
   };
 
-  const showStartScreen = !session && !breastSidePicking && bottleStage === null;
+  const handleCancel = () => {
+    if (!mySession) {
+      resetLocal();
+      return;
+    }
+    Alert.alert('Discard this feed?', 'The timer will stop and this feed will not be saved.', [
+      { text: 'Keep timing', style: 'cancel' },
+      {
+        text: 'Discard',
+        style: 'destructive',
+        onPress: () => { cancelSession(); resetLocal(); },
+      },
+    ]);
+  };
+
+  const showStartScreen = !session && !breastSidePicking && !bottlePreparing;
   const showBreastPicker = breastSidePicking && !session;
-  const showBreastTimer = !!session && session.type === 'breast';
-  const showBottlePrepare = bottleStage === 'prepare' && !session;
-  const showBottleTiming = bottleStage === 'timing' && !!session;
-  const showBottleFinish = bottleStage === 'finish';
-  const showCancel = showBreastPicker || showBreastTimer || showBottlePrepare || showBottleTiming || showBottleFinish;
+  const showBottlePrepare = bottlePreparing && !session;
+  const showBreastTimer = mySession?.type === 'breast';
+  const showBottleTiming = mySession?.type === 'bottle' && mySession.stage !== 'finish';
+  const showBottleFinish = mySession?.type === 'bottle' && mySession.stage === 'finish';
+  const showCancel = showBreastPicker || showBottlePrepare || !!mySession;
+
+  const todayStart = startOfToday();
+  const todayCount = logs.filter((l) => new Date(l.startTime || l.createdAt) >= todayStart).length;
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
@@ -586,25 +578,39 @@ export default function FeedingScreen() {
       >
         {/* Header */}
         <View style={styles.screenHeader}>
-          <View style={[styles.headerIcon, { backgroundColor: COLORS.feedingLight }]}>
+          <View style={[styles.headerIcon, { backgroundColor: C.feedingLight }]}>
             <Ionicons name="nutrition" size={24} color={COLORS.feeding} />
           </View>
           <View>
             <Text style={[styles.screenTitle, { color: C.text }]}>Feeding</Text>
             <Text style={[styles.screenSub, { color: C.textSecondary }]}>
-              {logs.length > 0 ? `${logs.filter(l => {
-                const t = new Date(); t.setHours(0, 0, 0, 0);
-                return new Date(l.createdAt) >= t;
-              }).length} feeds today` : 'Start first feed'}
+              {logs.length > 0 ? `${todayCount} feed${todayCount === 1 ? '' : 's'} today` : 'Start first feed'}
             </Text>
           </View>
         </View>
 
-        {/* Success toast */}
         {showSuccess && (
           <View style={[styles.successToast, { backgroundColor: COLORS.successLight }]}>
             <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
             <Text style={[styles.successText, { color: COLORS.success }]}>Feed logged!</Text>
+          </View>
+        )}
+
+        {/* Timer running for a different baby */}
+        {otherBabySession && (
+          <View style={[extra.otherBaby, { backgroundColor: C.feedingLight, borderColor: COLORS.feeding + '40' }]}>
+            <Ionicons name="time-outline" size={20} color={COLORS.feeding} />
+            <Text style={[extra.otherBabyText, { color: C.text }]}>
+              A feeding timer is running for {otherBabyName}.
+            </Text>
+            <TouchableOpacity
+              onPress={() => setActiveBaby(otherBabySession.babyId)}
+              style={[extra.otherBabyBtn, { backgroundColor: COLORS.feeding }]}
+              accessibilityRole="button"
+              accessibilityLabel={`Switch to ${otherBabyName}`}
+            >
+              <Text style={extra.otherBabyBtnText}>Open</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -624,16 +630,13 @@ export default function FeedingScreen() {
                     styles.typeCard,
                     { backgroundColor: C.card, borderColor: C.border },
                     feedType === t.value && styles.typeCardActive,
+                    feedType === t.value && { backgroundColor: C.feedingLight },
                   ]}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: feedType === t.value }}
                   accessibilityLabel={t.label}
                 >
-                  <Ionicons
-                    name={t.icon}
-                    size={26}
-                    color={feedType === t.value ? COLORS.feeding : C.textMuted}
-                  />
+                  <Ionicons name={t.icon} size={26} color={feedType === t.value ? COLORS.feeding : C.textMuted} />
                   <Text style={[styles.typeLabel, { color: feedType === t.value ? COLORS.feeding : C.text }]}>
                     {t.label}
                   </Text>
@@ -654,17 +657,10 @@ export default function FeedingScreen() {
           </>
         )}
 
-        {/* Breast side picker */}
-        {showBreastPicker && (
-          <BreastSidePicker C={C} onSelect={handleBreastSideSelect} />
-        )}
+        {showBreastPicker && <BreastSidePicker C={C} onSelect={handleBreastSideSelect} />}
 
-        {/* Active breast session */}
-        {showBreastTimer && (
-          <BreastfeedTimer C={C} babyId={babyId} onEnd={handleEnd} />
-        )}
+        {showBreastTimer && <BreastfeedTimer C={C} onEnd={showSaved} />}
 
-        {/* Bottle prepare */}
         {showBottlePrepare && (
           <BottlePrepForm
             C={C}
@@ -678,30 +674,19 @@ export default function FeedingScreen() {
           />
         )}
 
-        {/* Bottle timing */}
-        {showBottleTiming && (
-          <BottleTimingView
-            C={C}
-            preparedQty={preparedQty}
-            unit={unit}
-            onDone={handleBottleTimerDone}
-          />
-        )}
+        {showBottleTiming && <BottleTimingView C={C} session={mySession} />}
 
-        {/* Bottle finish */}
         {showBottleFinish && (
           <BottleFinishForm
             C={C}
-            session={session}
-            preparedQty={preparedQty}
-            unit={unit}
+            session={mySession}
             consumedQty={consumedQty}
             setConsumedQty={setConsumedQty}
             onSave={handleBottleSave}
+            saving={saving}
           />
         )}
 
-        {/* Cancel button */}
         {showCancel && (
           <TouchableOpacity
             onPress={handleCancel}
@@ -728,6 +713,16 @@ export default function FeedingScreen() {
     </View>
   );
 }
+
+const extra = StyleSheet.create({
+  otherBaby: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+    padding: SPACING.md, borderRadius: RADIUS.lg, borderWidth: 1, marginBottom: SPACING.md,
+  },
+  otherBabyText: { flex: 1, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium },
+  otherBabyBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS.full },
+  otherBabyBtnText: { color: COLORS.white, fontWeight: FONT_WEIGHT.semibold, fontSize: FONT_SIZE.sm },
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

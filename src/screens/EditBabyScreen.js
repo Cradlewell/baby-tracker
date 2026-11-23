@@ -8,6 +8,7 @@ import * as Haptics from 'expo-haptics';
 
 import { useBabyStore } from '../store/useBabyStore';
 import { useVaccinationStore } from '../store/useVaccinationStore';
+import { validateDob, formatDobInput } from '../utils/formatters';
 import { COLORS, DARK_COLORS } from '../constants/colors';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
 
@@ -28,8 +29,9 @@ export default function EditBabyScreen({ navigation, route }) {
       Alert.alert('Name required', "Please enter baby's name.");
       return;
     }
-    if (dob.length !== 10) {
-      Alert.alert('Invalid date', 'Please enter a complete date: DD/MM/YYYY');
+    const dobError = validateDob(dob);
+    if (dobError) {
+      Alert.alert('Invalid date of birth', dobError);
       return;
     }
 
@@ -78,7 +80,7 @@ export default function EditBabyScreen({ navigation, route }) {
         </View>
 
         <View style={styles.avatarWrap}>
-          <View style={[styles.avatar, { backgroundColor: COLORS.primaryLight }]}>
+          <View style={[styles.avatar, { backgroundColor: C.primaryLight }]}>
             <Text style={[styles.avatarLetter, { color: COLORS.primary }]}>
               {name?.[0]?.toUpperCase() || '?'}
             </Text>
@@ -99,12 +101,7 @@ export default function EditBabyScreen({ navigation, route }) {
         <TextInput
           style={[styles.input, { color: C.text, backgroundColor: C.card, borderColor: C.border }]}
           value={dob}
-          onChangeText={(t) => {
-            let v = t.replace(/\D/g, '');
-            if (v.length > 2) v = v.slice(0, 2) + '/' + v.slice(2);
-            if (v.length > 5) v = v.slice(0, 5) + '/' + v.slice(5, 9);
-            setDob(v);
-          }}
+          onChangeText={(t) => setDob(formatDobInput(t))}
           placeholder="DD/MM/YYYY"
           placeholderTextColor={COLORS.textMuted}
           keyboardType="number-pad"
@@ -126,7 +123,7 @@ export default function EditBabyScreen({ navigation, route }) {
               style={[
                 styles.genderBtn,
                 { backgroundColor: C.card, borderColor: C.border },
-                gender === g.value && { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
+                gender === g.value && { backgroundColor: C.primaryLight, borderColor: COLORS.primary },
               ]}
               accessibilityRole="radio"
               accessibilityState={{ selected: gender === g.value }}

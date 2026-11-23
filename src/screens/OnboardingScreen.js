@@ -6,6 +6,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useBabyStore } from '../store/useBabyStore';
+import { useGrowthStore } from '../store/useGrowthStore';
+import { validateDob, formatDobInput, parseDob, parsePositiveNumber } from '../utils/formatters';
 import { COLORS } from '../constants/colors';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
 
@@ -65,10 +67,37 @@ export default function OnboardingScreen({ navigation }) {
     ]).start();
   };
 
+  const [saving, setSaving] = useState(false);
+
+  const dobError = form.dob.length === 10 ? validateDob(form.dob) : null;
+  const weightValue = parsePositiveNumber(form.birthWeight);
+  const weightLimits = form.weightUnit === 'lbs' ? [0.7, 15] : [0.3, 7];
+  const weightError = form.birthWeight.trim() && (!weightValue || weightValue < weightLimits[0] || weightValue > weightLimits[1])
+    ? `Birth weight should be between ${weightLimits[0]} and ${weightLimits[1]} ${form.weightUnit}`
+    : null;
+
+  // Name and date of birth are required; the later steps are optional.
+  const canContinue = () => {
+    if (step === 0) return form.name.trim().length > 0;
+    if (step === 1) return form.dob.length === 10 && !dobError;
+    if (step === 3) return !weightError;
+    return true;
+  };
+  const canSkip = step >= 2 && step < STEPS.length - 1;
+
   const goNext = () => {
+    if (step < STEPS.length - 1) {
+      animateNext(1);
+      setStep(step + 1);
+    } else {
+      finish();
+    }
+  };
+
+  const skip = () => {
+    if (STEPS[step] === 'weight') setForm({ ...form, birthWeight: '' });
     animateNext(1);
-    if (step < STEPS.length - 1) setStep(step + 1);
-    else finish();
+    setStep(step + 1);
   };
 
   const goBack = () => {
@@ -78,21 +107,29 @@ export default function OnboardingScreen({ navigation }) {
   };
 
   const finish = async () => {
-    await addBaby({
-      name: form.name || 'Baby',
+    if (saving) return;
+    setSaving(true);
+    const baby = await addBaby({
+      name: form.name.trim(),
       dob: form.dob,
       gender: form.gender,
-      birthWeight: form.birthWeight,
+      birthWeight: weightValue ? String(weightValue) : '',
       weightUnit: form.weightUnit,
       feedingType: form.feedingType,
     });
-    navigation.replace('Main');
-  };
-
-  const canContinue = () => {
-    if (step === 0) return form.name.trim().length > 0;
-    if (step === 1) return form.dob.length === 10;
-    return true;
+    // Record the birth weight as the first growth measurement.
+    if (weightValue && !weightError) {
+      const birth = parseDob(form.dob);
+      await useGrowthStore.getState().addEntry(baby.id, {
+        weight: weightValue,
+        unit: form.weightUnit,
+        notes: 'Birth weight',
+        date: birth ? birth.toISOString() : undefined,
+      });
+    }
+    // Opened from inside the app ("Add baby") → go back; first launch → replace with Main.
+    if (navigation.canGoBack()) navigation.goBack();
+    else navigation.replace('Main');
   };
 
   const renderStep = () => {
@@ -126,15 +163,11 @@ export default function OnboardingScreen({ navigation }) {
               placeholder="DD / MM / YYYY"
               placeholderTextColor={COLORS.textMuted}
               value={form.dob}
-              onChangeText={(t) => {
-                let v = t.replace(/\D/g, '');
-                if (v.length > 2) v = v.slice(0, 2) + '/' + v.slice(2);
-                if (v.length > 5) v = v.slice(0, 5) + '/' + v.slice(5, 9);
-                setForm({ ...form, dob: v });
-              }}
+              onChangeText={(t) => setForm({ ...form, dob: formatDobInput(t) })}
               keyboardType="number-pad"
               maxLength={10}
             />
+            {dobError && <Text style={styles.errorText}>{dobError}</Text>}
           </View>
         );
       case 'gender':
@@ -188,6 +221,7 @@ export default function OnboardingScreen({ navigation }) {
                 ))}
               </View>
             </View>
+            {weightError && <Text style={styles.errorText}>{weightError}</Text>}
           </View>
         );
       case 'feeding':
@@ -230,8 +264,8 @@ export default function OnboardingScreen({ navigation }) {
             </TouchableOpacity>
           ) : <View style={{ width: 24 }} />}
           <ProgressDots current={step} total={STEPS.length} />
-          {step < STEPS.length - 1 ? (
-            <TouchableOpacity onPress={goNext}>
+          {canSkip ? (
+            <TouchableOpacity onPress={skip} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
               <Text style={styles.skipText}>Skip</Text>
             </TouchableOpacity>
           ) : <View style={{ width: 40 }} />}
@@ -251,8 +285,8 @@ export default function OnboardingScreen({ navigation }) {
         {/* CTA */}
         <TouchableOpacity
           onPress={goNext}
-          style={[styles.cta, !canContinue() && styles.ctaDisabled]}
-          disabled={!canContinue()}
+          style={[styles.cta, (!canContinue() || saving) && styles.ctaDisabled]}
+          disabled={!canContinue() || saving}
           accessibilityRole="button"
           accessibilityLabel={step === STEPS.length - 1 ? 'Get started' : 'Continue'}
         >
@@ -275,6 +309,7 @@ const styles = StyleSheet.create({
   dotActive: { width: 20, backgroundColor: COLORS.primary },
   dotDone: { backgroundColor: COLORS.primaryLight },
   skipText: { fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, fontWeight: FONT_WEIGHT.medium },
+  errorText: { fontSize: FONT_SIZE.sm, color: COLORS.error, marginTop: SPACING.sm, textAlign: 'center' },
   scrollContent: { flexGrow: 1, justifyContent: 'center' },
   stepContent: { alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.xl },
   stepEmoji: { fontSize: 64 },

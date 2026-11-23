@@ -13,10 +13,15 @@ import { useDiaperStore } from '../store/useDiaperStore';
 import { COLORS, DARK_COLORS } from '../constants/colors';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
 import {
-  formatRelative, formatDuration, calcAge, getGreeting, formatTime,
+  formatRelative, formatDuration, calcAge, getGreeting, startOfToday,
 } from '../utils/formatters';
 
-function StatCard({ icon, iconColor, bgColor, label, value, sub, onPress }) {
+// Feeds are timed from when they started; diapers from when the event happened.
+const feedTime = (l) => l.startTime || l.createdAt;
+const sleepEndTime = (l) => l.endTime || l.createdAt;
+const diaperTime = (l) => l.eventTime || l.createdAt;
+
+function StatCard({ icon, iconColor, bgColor, label, value, sub, onPress, C }) {
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -28,9 +33,9 @@ function StatCard({ icon, iconColor, bgColor, label, value, sub, onPress }) {
       <View style={[styles.statIcon, { backgroundColor: iconColor + '22' }]}>
         <Ionicons name={icon} size={20} color={iconColor} />
       </View>
-      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={[styles.statLabel, { color: C.textSecondary }]}>{label}</Text>
       <Text style={[styles.statValue, { color: iconColor }]}>{value}</Text>
-      {sub ? <Text style={styles.statSub}>{sub}</Text> : null}
+      {sub ? <Text style={[styles.statSub, { color: C.textMuted }]}>{sub}</Text> : null}
     </TouchableOpacity>
   );
 }
@@ -68,14 +73,17 @@ export default function HomeScreen({ navigation }) {
   const rawFeedLogs = useFeedingStore((s) => s.logs[babyId]);
   const rawDiaperLogs = useDiaperStore((s) => s.logs[babyId]);
 
+  const feedSession = useFeedingStore((s) => s.session);
+  const sleepSession = useSleepStore((s) => s.session);
+
   const todayFeeds = React.useMemo(() => {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    return (rawFeedLogs || []).filter((l) => new Date(l.createdAt) >= today);
+    const today = startOfToday();
+    return (rawFeedLogs || []).filter((l) => new Date(l.startTime || l.createdAt) >= today);
   }, [rawFeedLogs]);
 
   const todayDiapers = React.useMemo(() => {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    return (rawDiaperLogs || []).filter((l) => new Date(l.createdAt) >= today);
+    const today = startOfToday();
+    return (rawDiaperLogs || []).filter((l) => new Date(l.eventTime || l.createdAt) >= today);
   }, [rawDiaperLogs]);
 
   const [refreshing, setRefreshing] = React.useState(false);
@@ -100,16 +108,19 @@ export default function HomeScreen({ navigation }) {
 
   if (!baby) return null;
 
-  const lastFeedText = lastFeed
-    ? formatRelative(lastFeed.createdAt)
-    : 'Not logged yet';
+  const feedRunning = feedSession?.babyId === babyId;
+  const sleepRunning = sleepSession?.babyId === babyId;
 
-  const lastSleepText = lastSleep
-    ? formatRelative(lastSleep.createdAt)
-    : 'Not logged yet';
+  const lastFeedText = feedRunning
+    ? 'Feeding now'
+    : lastFeed ? `Started ${formatRelative(feedTime(lastFeed))}` : 'Not logged yet';
+
+  const lastSleepText = sleepRunning
+    ? `Sleeping since ${formatRelative(sleepSession.startTime).replace(' ago', '')}`
+    : lastSleep ? `Woke up ${formatRelative(sleepEndTime(lastSleep))}` : 'Not logged yet';
 
   const lastDiaperText = lastDiaper
-    ? formatRelative(lastDiaper.createdAt)
+    ? formatRelative(diaperTime(lastDiaper))
     : 'Not logged yet';
 
   return (
@@ -127,7 +138,7 @@ export default function HomeScreen({ navigation }) {
           <View style={{ flex: 1 }}>
             <Text style={[styles.greeting, { color: C.textSecondary }]}>{getGreeting()}</Text>
             <Text style={[styles.babyName, { color: C.text }]}>
-              {baby.name} <Text style={styles.age}>· {calcAge(baby.dob)}</Text>
+              {baby.name} <Text style={[styles.age, { color: C.textSecondary }]}>· {calcAge(baby.dob)}</Text>
             </Text>
           </View>
           <TouchableOpacity
@@ -157,7 +168,7 @@ export default function HomeScreen({ navigation }) {
                   accessibilityRole="button"
                   accessibilityLabel="Add new baby"
                 >
-                  <View style={[styles.switcherAvatar, { backgroundColor: COLORS.primaryLight }]}>
+                  <View style={[styles.switcherAvatar, { backgroundColor: C.primaryLight }]}>
                     <Ionicons name="add" size={18} color={COLORS.primary} />
                   </View>
                   <Text style={[styles.switcherName, { color: COLORS.primary }]}>Add Baby</Text>
@@ -171,7 +182,7 @@ export default function HomeScreen({ navigation }) {
                 style={[
                   styles.switcherPill,
                   { backgroundColor: C.card, borderColor: C.border },
-                  isActive && { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
+                  isActive && { backgroundColor: C.primaryLight, borderColor: COLORS.primary },
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel={`Switch to ${b.name}`}
@@ -234,33 +245,37 @@ export default function HomeScreen({ navigation }) {
             icon="nutrition"
             iconColor={COLORS.feeding}
             bgColor={C.card}
+            C={C}
             label="Feeds"
             value={`${todayFeeds.length}`}
-            sub={lastFeed ? `Last ${formatRelative(lastFeed.createdAt)}` : 'None yet'}
+            sub={feedRunning ? 'Feeding now' : lastFeed ? `Last ${formatRelative(feedTime(lastFeed))}` : 'None yet'}
             onPress={() => navigation.navigate('Feeding')}
           />
           <StatCard
             icon="moon"
             iconColor={COLORS.sleep}
             bgColor={C.card}
+            C={C}
             label="Sleep"
             value={todaySleepSecs > 0 ? formatDuration(todaySleepSecs) : '0m'}
-            sub={lastSleep ? `Last ${formatRelative(lastSleep.createdAt)}` : 'None yet'}
+            sub={sleepRunning ? 'Sleeping now' : lastSleep ? `Last ${formatRelative(sleepEndTime(lastSleep))}` : 'None yet'}
             onPress={() => navigation.navigate('Sleep')}
           />
           <StatCard
             icon="water"
             iconColor={COLORS.diaper}
             bgColor={C.card}
+            C={C}
             label="Diapers"
             value={`${todayDiapers.length}`}
-            sub={lastDiaper ? `Last ${formatRelative(lastDiaper.createdAt)}` : 'None yet'}
+            sub={lastDiaper ? `Last ${formatRelative(diaperTime(lastDiaper))}` : 'None yet'}
             onPress={() => navigation.navigate('Diaper')}
           />
           <StatCard
             icon="trending-up"
             iconColor={COLORS.growth}
             bgColor={C.card}
+            C={C}
             label="Growth"
             value="Track"
             sub="Tap to measure"

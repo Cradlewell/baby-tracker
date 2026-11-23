@@ -21,16 +21,25 @@ function fmtTime(date) {
   return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
-function parseTimeStr(str, fallback) {
-  const m = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
-  if (!m) return fallback;
+// Parses "9:05 PM" / "21:05". Returns null for anything that isn't a real time.
+// A time later than now is treated as yesterday (e.g. logging 11:50 PM just after midnight).
+function parseTimeStr(str) {
+  const m = (str || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!m) return null;
   let h = parseInt(m[1], 10);
   const min = parseInt(m[2], 10);
   const mer = m[3]?.toUpperCase();
-  if (mer === 'PM' && h < 12) h += 12;
-  if (mer === 'AM' && h === 12) h = 0;
-  const d = new Date(fallback);
+  if (min > 59) return null;
+  if (mer) {
+    if (h < 1 || h > 12) return null;
+    if (mer === 'PM' && h < 12) h += 12;
+    if (mer === 'AM' && h === 12) h = 0;
+  } else if (h > 23) {
+    return null;
+  }
+  const d = new Date();
   d.setHours(h, min, 0, 0);
+  if (d.getTime() > Date.now() + 60000) d.setDate(d.getDate() - 1);
   return d;
 }
 
@@ -86,19 +95,36 @@ export default function DiaperScreen({ navigation }) {
     setStep('confirm');
   };
 
-  const adjustTime = (setter, strSetter, baseDate, mins) => {
-    const d = new Date(baseDate.getTime() + mins * 60000);
+  // Start from whatever is typed in the box (if valid) so ±5 doesn't undo a typed time.
+  const adjustTime = (setter, strSetter, currentStr, fallbackDate, mins) => {
+    const base = parseTimeStr(currentStr) || fallbackDate;
+    let d = new Date(base.getTime() + mins * 60000);
+    if (d.getTime() > Date.now()) d = new Date();
     setter(d);
     strSetter(fmtTime(d));
   };
 
+  const [saving, setSaving] = useState(false);
+  const evParsed = parseTimeStr(eventTimeStr);
+  const chParsed = changed ? parseTimeStr(changeTimeStr) : null;
+  const timeError = !evParsed
+    ? 'Enter the time like 9:05 PM'
+    : changed && !chParsed
+    ? 'Enter the change time like 9:10 PM'
+    : changed && chParsed < evParsed
+    ? 'Change time cannot be before the diaper event'
+    : null;
+
+  const cannotSave = changed === null || !!timeError || saving;
+
   const handleSave = async () => {
-    if (changed === null) return;
+    if (changed === null || timeError || saving) return;
+    setSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    const evTime = parseTimeStr(eventTimeStr, eventTime);
-    const chTime = changed ? parseTimeStr(changeTimeStr, changeTime) : null;
-    const delayMinutes = (changed && chTime && evTime)
+    const evTime = evParsed;
+    const chTime = chParsed;
+    const delayMinutes = (changed && chTime)
       ? Math.max(0, Math.round((chTime - evTime) / 60000))
       : null;
 
@@ -113,6 +139,7 @@ export default function DiaperScreen({ navigation }) {
     setStep(null);
     setEventType(null);
     setChanged(null);
+    setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
@@ -153,7 +180,7 @@ export default function DiaperScreen({ navigation }) {
             <Text style={[styles.statNum, { color: '#65A30D' }]}>{stats.stoolCount}</Text>
             <Text style={[styles.statLbl, { color: '#65A30D' }]}>stool</Text>
           </View>
-          <View style={[styles.statPill, { backgroundColor: COLORS.primaryLight }]}>
+          <View style={[styles.statPill, { backgroundColor: C.primaryLight }]}>
             <Ionicons name="time-outline" size={16} color={COLORS.primary} />
             <Text style={[styles.statNum, { color: COLORS.primary }]}>
               {stats.avgDelay !== null ? `${stats.avgDelay}m` : '--'}
@@ -210,7 +237,7 @@ export default function DiaperScreen({ navigation }) {
               <Text style={[styles.sectionLbl, { color: C.textSecondary }]}>WHEN DID IT HAPPEN?</Text>
               <View style={styles.timeRow}>
                 <TouchableOpacity
-                  onPress={() => adjustTime(setEventTime, setEventTimeStr, eventTime, -5)}
+                  onPress={() => adjustTime(setEventTime, setEventTimeStr, eventTimeStr, eventTime, -5)}
                   style={[styles.adjBtn, { backgroundColor: C.background }]}
                 >
                   <Text style={[styles.adjText, { color: C.text }]}>−5m</Text>
@@ -222,7 +249,7 @@ export default function DiaperScreen({ navigation }) {
                   selectTextOnFocus
                 />
                 <TouchableOpacity
-                  onPress={() => adjustTime(setEventTime, setEventTimeStr, eventTime, 5)}
+                  onPress={() => adjustTime(setEventTime, setEventTimeStr, eventTimeStr, eventTime, 5)}
                   style={[styles.adjBtn, { backgroundColor: C.background }]}
                 >
                   <Text style={[styles.adjText, { color: C.text }]}>+5m</Text>
@@ -267,7 +294,7 @@ export default function DiaperScreen({ navigation }) {
                 <Text style={[styles.sectionLbl, { color: C.textSecondary }]}>CHANGED AT</Text>
                 <View style={styles.timeRow}>
                   <TouchableOpacity
-                    onPress={() => adjustTime(setChangeTime, setChangeTimeStr, changeTime, -5)}
+                    onPress={() => adjustTime(setChangeTime, setChangeTimeStr, changeTimeStr, changeTime, -5)}
                     style={[styles.adjBtn, { backgroundColor: C.background }]}
                   >
                     <Text style={[styles.adjText, { color: C.text }]}>−5m</Text>
@@ -279,7 +306,7 @@ export default function DiaperScreen({ navigation }) {
                     selectTextOnFocus
                   />
                   <TouchableOpacity
-                    onPress={() => adjustTime(setChangeTime, setChangeTimeStr, changeTime, 5)}
+                    onPress={() => adjustTime(setChangeTime, setChangeTimeStr, changeTimeStr, changeTime, 5)}
                     style={[styles.adjBtn, { backgroundColor: C.background }]}
                   >
                     <Text style={[styles.adjText, { color: C.text }]}>+5m</Text>
@@ -288,19 +315,23 @@ export default function DiaperScreen({ navigation }) {
               </View>
             )}
 
+            {timeError && changed !== null && (
+              <Text style={{ color: COLORS.error, fontSize: 13, marginBottom: 8 }}>{timeError}</Text>
+            )}
+
             {/* Save */}
             <TouchableOpacity
               onPress={handleSave}
-              disabled={changed === null}
+              disabled={cannotSave}
               style={[
                 styles.saveBtn,
-                { backgroundColor: changed === null ? (darkMode ? '#374151' : COLORS.gray200) : selectedEv.color },
+                { backgroundColor: cannotSave ? (darkMode ? '#374151' : COLORS.gray200) : selectedEv.color },
               ]}
               accessibilityRole="button"
               accessibilityLabel="Save diaper event"
             >
-              <Ionicons name="checkmark-circle" size={22} color={changed === null ? C.textMuted : '#fff'} />
-              <Text style={[styles.saveBtnText, { color: changed === null ? C.textMuted : '#fff' }]}>
+              <Ionicons name="checkmark-circle" size={22} color={cannotSave ? C.textMuted : '#fff'} />
+              <Text style={[styles.saveBtnText, { color: cannotSave ? C.textMuted : '#fff' }]}>
                 Save
               </Text>
             </TouchableOpacity>
@@ -309,7 +340,7 @@ export default function DiaperScreen({ navigation }) {
 
         {/* ── Insight Banner ── */}
         {stats.avgDelay !== null && step === null && (
-          <View style={[styles.insightCard, { backgroundColor: COLORS.primaryLight }]}>
+          <View style={[styles.insightCard, { backgroundColor: C.primaryLight }]}>
             <Ionicons name="bulb-outline" size={16} color={COLORS.primary} />
             <Text style={[styles.insightText, { color: COLORS.primary }]}>
               Avg diaper change delay today: {stats.avgDelay} min

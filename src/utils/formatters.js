@@ -45,21 +45,90 @@ export function formatWeight(value, unit = 'kg') {
   return `${parseFloat(value).toFixed(2)} ${unit}`;
 }
 
+// Strictly parses a DD/MM/YYYY string. Returns a local-midnight Date, or null
+// when the string is not a real calendar date (e.g. 31/02/2025 or 99/99/2025).
+export function parseDob(dob) {
+  if (!dob || typeof dob !== 'string') return null;
+  const m = dob.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) {
+    // Fallback for ISO strings stored by older versions.
+    const d = new Date(dob);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const dd = parseInt(m[1], 10);
+  const mm = parseInt(m[2], 10);
+  const yyyy = parseInt(m[3], 10);
+  const d = new Date(yyyy, mm - 1, dd);
+  if (d.getFullYear() !== yyyy || d.getMonth() !== mm - 1 || d.getDate() !== dd) return null;
+  return d;
+}
+
+// Returns an error message for an invalid date of birth, or null if it is valid.
+export function validateDob(dob) {
+  if (!dob || dob.length !== 10) return 'Enter the full date as DD/MM/YYYY';
+  const d = parseDob(dob);
+  if (!d) return 'That date does not exist';
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  if (d > today) return 'Date of birth cannot be in the future';
+  const oldest = new Date();
+  oldest.setFullYear(oldest.getFullYear() - 6);
+  if (d < oldest) return 'Date of birth must be within the last 6 years';
+  return null;
+}
+
+export function formatDobInput(text) {
+  let v = text.replace(/\D/g, '');
+  if (v.length > 2) v = v.slice(0, 2) + '/' + v.slice(2);
+  if (v.length > 5) v = v.slice(0, 5) + '/' + v.slice(5, 9);
+  return v;
+}
+
+// ── Units ──
+export const ML_PER_OZ = 29.5735;
+export const KG_PER_LB = 0.45359237;
+
+export function toMl(qty, unit) {
+  const n = parseFloat(qty) || 0;
+  return unit === 'oz' ? n * ML_PER_OZ : n;
+}
+
+export function toKg(weight, unit) {
+  const n = parseFloat(weight);
+  if (!n) return null;
+  return unit === 'lbs' ? n * KG_PER_LB : n;
+}
+
+// Accepts "4,2" as well as "4.2". Returns a positive number or null.
+export function parsePositiveNumber(text) {
+  if (text === null || text === undefined || text === '') return null;
+  const n = parseFloat(String(text).replace(',', '.'));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// ── Day boundaries ──
+export function startOfToday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Seconds of [start, end] that fall inside today (midnight → now).
+export function secondsWithinToday(startMs, endMs) {
+  const dayStart = startOfToday().getTime();
+  const s = Math.max(startMs, dayStart);
+  const e = Math.min(endMs, Date.now());
+  return e > s ? Math.floor((e - s) / 1000) : 0;
+}
+
 export function calcAge(dob) {
   if (!dob) return '';
-  let birth;
-  if (typeof dob === 'string' && dob.includes('/')) {
-    const [dd, mm, yyyy] = dob.split('/');
-    let year = parseInt(yyyy, 10);
-    if (year < 100) year += 2000;
-    birth = new Date(year, parseInt(mm, 10) - 1, parseInt(dd, 10));
-  } else {
-    birth = new Date(dob);
-  }
-  if (isNaN(birth.getTime())) return '';
+  const birth = parseDob(dob);
+  if (!birth) return '';
   const now = new Date();
   const diffMs = now - birth;
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return '';
 
   if (diffDays === 0) return 'Newborn';
   if (diffDays < 7) return `${diffDays} day${diffDays === 1 ? '' : 's'} old`;

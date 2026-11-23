@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
 } from 'react-native';
@@ -9,11 +9,11 @@ import { format } from 'date-fns';
 import { useBabyStore } from '../store/useBabyStore';
 import { useFeedingStore } from '../store/useFeedingStore';
 import { useSleepStore } from '../store/useSleepStore';
-import { useDiaperStore } from '../store/useDiaperStore';
+import { useDiaperStore, DIAPER_TYPES } from '../store/useDiaperStore';
 import { useMedicineStore } from '../store/useMedicineStore';
 import { COLORS, DARK_COLORS } from '../constants/colors';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
-import { formatDuration } from '../utils/formatters';
+import { formatDuration, formatTime, toMl, startOfToday, secondsWithinToday } from '../utils/formatters';
 
 function SummaryBlock({ icon, color, bg, title, children }) {
   return (
@@ -43,17 +43,12 @@ export default function SummaryScreen({ navigation }) {
   const C = darkMode ? DARK_COLORS : COLORS;
   const insets = useSafeAreaInsets();
 
-  const loadFeeding = useFeedingStore((s) => s.load);
-  const loadSleep = useSleepStore((s) => s.load);
-  const loadDiaper = useDiaperStore((s) => s.load);
-  const loadMedicine = useMedicineStore((s) => s.load);
-
   useEffect(() => {
     if (babyId) {
-      loadFeeding(babyId);
-      loadSleep(babyId);
-      loadDiaper(babyId);
-      loadMedicine(babyId);
+      useFeedingStore.getState().load(babyId);
+      useSleepStore.getState().load(babyId);
+      useDiaperStore.getState().load(babyId);
+      useMedicineStore.getState().load(babyId);
     }
   }, [babyId]);
 
@@ -62,40 +57,46 @@ export default function SummaryScreen({ navigation }) {
   const rawDiaperLogs = useDiaperStore((s) => s.logs[babyId]);
   const rawMedLogs = useMedicineStore((s) => s.logs[babyId]);
 
-  const feedLogs = React.useMemo(() => {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    return (rawFeedLogs || []).filter((l) => new Date(l.createdAt) >= today);
-  }, [rawFeedLogs]);
+  const today = startOfToday();
+  const isToday = (d) => d && new Date(d) >= today;
 
-  const sleepLogs = React.useMemo(() => {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    return (rawSleepLogs || []).filter((l) => new Date(l.createdAt) >= today);
-  }, [rawSleepLogs]);
-
-  const diaperLogs = React.useMemo(() => {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    return (rawDiaperLogs || []).filter((l) => new Date(l.createdAt) >= today);
-  }, [rawDiaperLogs]);
-
-  const medLogs = React.useMemo(() => {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    return (rawMedLogs || []).filter((l) => new Date(l.createdAt) >= today);
-  }, [rawMedLogs]);
+  const feedLogs = useMemo(
+    () => (rawFeedLogs || []).filter((l) => isToday(l.startTime || l.createdAt)),
+    [rawFeedLogs]
+  );
+  // Sleeps that overlap today, including an overnight sleep that started yesterday.
+  const sleepLogs = useMemo(
+    () => (rawSleepLogs || []).filter((l) => secondsWithinToday(l.startTime, l.endTime) > 0),
+    [rawSleepLogs]
+  );
+  const diaperLogs = useMemo(
+    () => (rawDiaperLogs || []).filter((l) => isToday(l.eventTime || l.createdAt)),
+    [rawDiaperLogs]
+  );
+  const medLogs = useMemo(
+    () => (rawMedLogs || []).filter((l) => isToday(l.time || l.createdAt)),
+    [rawMedLogs]
+  );
 
   const breastFeeds = feedLogs.filter((f) => f.type === 'breast');
   const bottleFeeds = feedLogs.filter((f) => f.type === 'bottle');
-  const totalBreastSecs = breastFeeds.reduce((s, f) => s + f.totalSecs, 0);
-  const totalBottleMl = bottleFeeds.reduce((s, f) => s + (f.bottleQty || 0), 0);
+  const totalBreastSecs = breastFeeds.reduce((s, f) => s + (f.totalSecs || 0), 0);
+  // Bottles may be logged in ml or oz; total them in ml.
+  const totalBottleMl = Math.round(
+    bottleFeeds.reduce((s, f) => s + toMl(f.consumedQty ?? f.bottleQty, f.unit), 0)
+  );
 
-  const totalSleepSecs = sleepLogs.reduce((s, l) => s + l.totalSecs, 0);
+  const totalSleepSecs = sleepLogs.reduce((s, l) => s + secondsWithinToday(l.startTime, l.endTime), 0);
   const naps = sleepLogs.filter((l) => l.isNap);
   const nightSleep = sleepLogs.filter((l) => !l.isNap);
 
-  const wetDiapers = diaperLogs.filter((d) => d.type === 'wet').length;
-  const dirtyDiapers = diaperLogs.filter((d) => d.type === 'dirty').length;
-  const mixedDiapers = diaperLogs.filter((d) => d.type === 'mixed').length;
+  // Diaper entries are saved with eventType 'urine' | 'stool' | 'both'.
+  const typeOf = (d) => DIAPER_TYPES[d.eventType];
+  const wetDiapers = diaperLogs.filter((d) => typeOf(d)?.wet).length;
+  const stoolDiapers = diaperLogs.filter((d) => typeOf(d)?.stool).length;
 
-  const medicineDone = medLogs.filter((m) => m.status === 'given');
+  const medicineGiven = medLogs.filter((m) => m.status === 'given');
+  const medicineSkipped = medLogs.filter((m) => m.status === 'skipped');
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
@@ -120,68 +121,76 @@ export default function SummaryScreen({ navigation }) {
         {/* Overview pills */}
         <View style={styles.overviewRow}>
           {[
-            { label: 'Feeds', value: feedLogs.length, color: COLORS.feeding, bg: COLORS.feedingLight },
-            { label: 'Sleep', value: totalSleepSecs > 0 ? formatDuration(totalSleepSecs) : '0m', color: COLORS.sleep, bg: COLORS.sleepLight },
-            { label: 'Diapers', value: diaperLogs.length, color: COLORS.diaper, bg: COLORS.diaperLight },
+            { label: 'Feeds', value: feedLogs.length, color: COLORS.feeding, bg: C.feedingLight },
+            { label: 'Sleep', value: totalSleepSecs > 0 ? formatDuration(totalSleepSecs) : '0m', color: COLORS.sleep, bg: C.sleepLight },
+            { label: 'Diapers', value: diaperLogs.length, color: COLORS.diaper, bg: C.diaperLight },
           ].map((item) => (
             <View key={item.label} style={[styles.overviewPill, { backgroundColor: item.bg }]}>
               <Text style={[styles.overviewNum, { color: item.color }]}>{item.value}</Text>
-              <Text style={[styles.overviewLabel, { color: COLORS.textSecondary }]}>{item.label}</Text>
+              <Text style={[styles.overviewLabel, { color: C.textSecondary }]}>{item.label}</Text>
             </View>
           ))}
         </View>
 
         {/* Feeding block */}
-        <SummaryBlock icon="nutrition" color={COLORS.feeding} bg={COLORS.feedingLight} title="Feeding">
+        <SummaryBlock icon="nutrition" color={COLORS.feeding} bg={C.feedingLight} title="Feeding">
           <StatRow label="Total feeds" value={feedLogs.length} C={C} />
           {breastFeeds.length > 0 && (
             <StatRow label="Breastfeed sessions" value={`${breastFeeds.length} · ${formatDuration(totalBreastSecs)}`} C={C} />
           )}
           {bottleFeeds.length > 0 && (
-            <StatRow label="Bottle feeds" value={`${bottleFeeds.length} · ${totalBottleMl}ml`} C={C} />
+            <StatRow label="Bottle feeds (consumed)" value={`${bottleFeeds.length} · ${totalBottleMl} ml`} C={C} />
           )}
           {feedLogs.length === 0 && (
-            <Text style={[styles.emptyNote, { color: COLORS.textMuted }]}>No feeds logged today</Text>
+            <Text style={[styles.emptyNote, { color: C.textMuted }]}>No feeds logged today</Text>
           )}
         </SummaryBlock>
 
         {/* Sleep block */}
-        <SummaryBlock icon="moon" color={COLORS.sleep} bg={COLORS.sleepLight} title="Sleep">
-          <StatRow label="Total sleep" value={totalSleepSecs > 0 ? formatDuration(totalSleepSecs) : '—'} C={C} />
+        <SummaryBlock icon="moon" color={COLORS.sleep} bg={C.sleepLight} title="Sleep">
+          <StatRow label="Total sleep (since midnight)" value={totalSleepSecs > 0 ? formatDuration(totalSleepSecs) : '—'} C={C} />
           <StatRow label="Naps" value={naps.length} C={C} />
           <StatRow label="Night sleep" value={nightSleep.length} C={C} />
           <StatRow label="Total wakeups" value={sleepLogs.reduce((s, l) => s + (l.wakeups || 0), 0)} C={C} />
           {sleepLogs.length === 0 && (
-            <Text style={[styles.emptyNote, { color: COLORS.textMuted }]}>No sleep logged today</Text>
+            <Text style={[styles.emptyNote, { color: C.textMuted }]}>No sleep logged today</Text>
           )}
         </SummaryBlock>
 
         {/* Diaper block */}
-        <SummaryBlock icon="water" color={COLORS.diaper} bg={COLORS.diaperLight} title="Diapers">
+        <SummaryBlock icon="water" color={COLORS.diaper} bg={C.diaperLight} title="Diapers">
           <StatRow label="Total diapers" value={diaperLogs.length} C={C} />
-          <StatRow label="Wet" value={wetDiapers} C={C} />
-          <StatRow label="Dirty" value={dirtyDiapers} C={C} />
-          <StatRow label="Mixed" value={mixedDiapers} C={C} />
+          <StatRow label="Wet (urine or both)" value={wetDiapers} C={C} />
+          <StatRow label="Stool (stool or both)" value={stoolDiapers} C={C} />
           {diaperLogs.length === 0 && (
-            <Text style={[styles.emptyNote, { color: COLORS.textMuted }]}>No diapers logged today</Text>
+            <Text style={[styles.emptyNote, { color: C.textMuted }]}>No diapers logged today</Text>
           )}
         </SummaryBlock>
 
         {/* Medicine block */}
         {medLogs.length > 0 && (
-          <SummaryBlock icon="medical" color={COLORS.medicine} bg={COLORS.medicineLight} title="Medicine">
-            <StatRow label="Given today" value={medicineDone.length} C={C} />
-            {medicineDone.map((m) => (
-              <StatRow key={m.id} label={m.name} value={`${m.dose} ${m.unit}`} C={C} />
+          <SummaryBlock icon="medical" color={COLORS.medicine} bg={C.medicineLight} title="Medicine">
+            <StatRow label="Given today" value={medicineGiven.length} C={C} />
+            {medicineGiven.map((m) => (
+              <StatRow key={m.id} label={`${m.name} · ${formatTime(m.time)}`} value={`${m.dose || '—'} ${m.unit}`} C={C} />
             ))}
+            {medicineSkipped.length > 0 && (
+              <>
+                <StatRow label="Skipped today" value={medicineSkipped.length} C={C} />
+                {medicineSkipped.map((m) => (
+                  <StatRow key={m.id} label={`${m.name} · ${formatTime(m.time)}`} value="Skipped" C={C} />
+                ))}
+              </>
+            )}
           </SummaryBlock>
         )}
 
-        {/* Hydration hint */}
+        {/* Guidance */}
         <View style={[styles.hintCard, { backgroundColor: C.card, borderColor: C.border }]}>
           <Ionicons name="information-circle-outline" size={20} color={COLORS.primary} />
           <Text style={[styles.hintText, { color: C.textSecondary }]}>
             Newborns typically need 8–12 feeds, 6–8 wet diapers, and 14–17h sleep per 24 hours.
+            Today's numbers only count since midnight. Ask your doctor if you are worried.
           </Text>
         </View>
       </ScrollView>

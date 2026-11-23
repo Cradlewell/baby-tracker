@@ -33,11 +33,15 @@ export default function MedicineScreen({ navigation }) {
     if (babyId) load(babyId);
   }, [babyId]);
 
+  const [saving, setSaving] = useState(false);
+
   const handleSave = async () => {
-    if (!name.trim()) return;
+    if (!name.trim() || saving) return;
+    setSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await addLog(babyId, { name, dose, unit, status, notes });
+    await addLog(babyId, { name, dose: dose.replace(',', '.').trim(), unit, status, notes });
     setName(''); setDose(''); setNotes('');
+    setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

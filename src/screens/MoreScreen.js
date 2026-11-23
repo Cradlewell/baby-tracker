@@ -60,13 +60,13 @@ export default function MoreScreen({ navigation }) {
       >
         {/* Baby card */}
         {baby && (
-          <View style={[styles.babyCard, { backgroundColor: COLORS.primaryLight }]}>
+          <View style={[styles.babyCard, { backgroundColor: C.primaryLight }]}>
             <View style={styles.babyAvatar}>
               <Text style={styles.babyAvatarText}>{baby.name?.[0]?.toUpperCase()}</Text>
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.babyName, { color: COLORS.primary }]}>{baby.name}</Text>
-              <Text style={[styles.babyAge, { color: COLORS.textSecondary }]}>{calcAge(baby.dob)}</Text>
+              <Text style={[styles.babyAge, { color: C.textSecondary }]}>{calcAge(baby.dob)}</Text>
             </View>
             <Ionicons name={baby.gender === 'girl' ? 'female' : baby.gender === 'boy' ? 'male' : 'person'} size={20} color={COLORS.primary} />
           </View>
@@ -78,14 +78,14 @@ export default function MoreScreen({ navigation }) {
           items={[
             {
               label: 'Diaper Log',
-              sub: 'Wet, dirty, mixed',
+              sub: 'Urine, stool, both',
               icon: 'water',
               color: COLORS.diaper,
               onPress: () => navigation.navigate('Diaper'),
             },
             {
               label: 'Medicine',
-              sub: 'Track doses & reminders',
+              sub: 'Track doses given or skipped',
               icon: 'medical',
               color: COLORS.medicine,
               onPress: () => navigation.navigate('Medicine'),
@@ -120,7 +120,7 @@ export default function MoreScreen({ navigation }) {
           items={[
             {
               label: 'Settings',
-              sub: 'Dark mode, notifications',
+              sub: 'Dark mode, baby profiles, data',
               icon: 'settings',
               color: COLORS.textSecondary,
               onPress: () => navigation.navigate('Settings'),

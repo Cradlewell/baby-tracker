@@ -14,24 +14,12 @@
     },
     "plugins": [
       "expo-font",
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/icon.png",
-          "color": "#6388FF"
-        }
-      ],
-      "expo-web-browser"
+      "expo-status-bar"
     ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.cradlewell.bloom",
-      "buildNumber": "1",
-      "infoPlist": {
-        "NSCameraUsageDescription": "Used to capture baby photos",
-        "NSPhotoLibraryUsageDescription": "Used to select baby photos from your library",
-        "NSUserNotificationsUsageDescription": "Used to send feeding and medicine reminders"
-      }
+      "buildNumber": "1"
     },
     "android": {
       "package": "com.cradlewell.bloom",
@@ -41,9 +29,7 @@
         "backgroundColor": "#EEF2FF"
       },
       "permissions": [
-        "RECEIVE_BOOT_COMPLETED",
-        "VIBRATE",
-        "POST_NOTIFICATIONS"
+        "VIBRATE"
       ]
     },
     "web": {

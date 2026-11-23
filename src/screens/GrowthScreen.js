@@ -11,51 +11,65 @@ import { useBabyStore } from '../store/useBabyStore';
 import { useGrowthStore } from '../store/useGrowthStore';
 import { COLORS, DARK_COLORS } from '../constants/colors';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
-import { formatDateFull, formatRelative } from '../utils/formatters';
+import { formatDateFull, formatRelative, parsePositiveNumber } from '../utils/formatters';
 
-function MiniChart({ data, color }) {
-  if (!data || data.length < 2) return null;
-  const values = data.map((d) => parseFloat(d.weight) || 0).filter((v) => v > 0);
-  if (values.length < 2) return null;
+// `series` is oldest → newest, every weight already converted to kg.
+function MiniChart({ series, color, C }) {
+  const recent = series.slice(-8); // the 8 most recent weigh-ins, left = oldest
+  if (recent.length < 2) return null;
+  const values = recent.map((p) => p.kg);
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
-  const W = 200, H = 60;
-
-  const points = values.slice(-8).map((v, i, arr) => ({
-    x: (i / Math.max(arr.length - 1, 1)) * W,
-    y: H - ((v - min) / range) * (H - 10) - 5,
-  }));
-
-  const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
 
   return (
-    <View style={{ width: W, height: H }}>
-      {/* Simplified chart using View bars */}
+    <View style={{ width: 200, height: 76 }}>
       <View style={styles.chartBars}>
-        {values.slice(-8).map((v, i) => {
-          const h = ((v - min) / range) * 48 + 4;
-          return (
-            <View
-              key={i}
-              style={[styles.chartBar, { height: h, backgroundColor: color, opacity: 0.6 + (i / values.length) * 0.4 }]}
-            />
-          );
-        })}
+        {values.map((v, i) => (
+          <View
+            key={recent[i].id}
+            style={[styles.chartBar, { height: ((v - min) / range) * 48 + 4, backgroundColor: color, opacity: 0.6 + (i / values.length) * 0.4 }]}
+          />
+        ))}
       </View>
+      <Text style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>
+        {formatDateFull(recent[0].date)} → {formatDateFull(recent[recent.length - 1].date)}
+      </Text>
     </View>
   );
 }
 
-function AddMeasurementModal({ visible, onClose, onSave, C }) {
+// Sensible limits for a baby/toddler; anything outside is almost certainly a typo.
+const LIMITS = {
+  kg: [0.3, 40],
+  lbs: [0.7, 90],
+  height: [20, 150],
+  headCirc: [20, 60],
+};
+
+function AddMeasurementModal({ visible, onClose, onSave, C, defaultUnit }) {
   const [weight, setWeight] = useState('');
   const [height, setHeight] = useState('');
   const [headCirc, setHeadCirc] = useState('');
-  const [unit, setUnit] = useState('kg');
+  const [unit, setUnit] = useState(defaultUnit || 'kg');
+  const [error, setError] = useState(null);
+
+  const check = (text, [lo, hi], label) => {
+    if (!text.trim()) return { value: null };
+    const n = parsePositiveNumber(text);
+    if (!n || n < lo || n > hi) return { error: `${label} should be between ${lo} and ${hi}` };
+    return { value: n };
+  };
 
   const handleSave = () => {
-    if (!weight && !height && !headCirc) return;
-    onSave({ weight, height, headCirc, unit });
+    const w = check(weight, LIMITS[unit], `Weight (${unit})`);
+    const h = check(height, LIMITS.height, 'Height (cm)');
+    const hc = check(headCirc, LIMITS.headCirc, 'Head circumference (cm)');
+    const firstError = w.error || h.error || hc.error;
+    if (firstError) return setError(firstError);
+    if (!w.value && !h.value && !hc.value) return setError('Enter at least one measurement');
+    setError(null);
+    onSave({ weight: w.value, height: h.value, headCirc: hc.value, unit });
     setWeight(''); setHeight(''); setHeadCirc('');
   };
 
@@ -99,13 +113,15 @@ function AddMeasurementModal({ visible, onClose, onSave, C }) {
                 <TouchableOpacity
                   key={u}
                   onPress={() => setUnit(u)}
-                  style={[styles.unitBtn, unit === u && styles.unitBtnActive]}
+                  style={[styles.unitBtn, { backgroundColor: C.card }, unit === u && styles.unitBtnActive]}
                 >
-                  <Text style={[styles.unitText, unit === u && styles.unitTextActive]}>{u}</Text>
+                  <Text style={[styles.unitText, { color: C.textSecondary }, unit === u && styles.unitTextActive]}>{u}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
+
+          {error && <Text style={{ color: COLORS.error, fontSize: 13, marginBottom: 8 }}>{error}</Text>}
 
           <TouchableOpacity
             onPress={handleSave}
@@ -129,10 +145,15 @@ export default function GrowthScreen() {
   const C = darkMode ? DARK_COLORS : COLORS;
   const insets = useSafeAreaInsets();
 
-  const { load, addEntry, getLogs, getLatest, getWeightGain } = useGrowthStore();
+  const { load, addEntry, getLogs, getLatest, getWeightGain, getWeightSeriesKg } = useGrowthStore();
   const logs = getLogs(babyId);
   const latest = getLatest(babyId);
+  // The newest entry may only have height, so take the newest entry that has a weight.
+  const latestWeight = logs.find((l) => l.weight);
   const gain = getWeightGain(babyId);
+  const series = getWeightSeriesKg(babyId);
+  const gainUp = !gain || parseFloat(gain.gain) >= 0;
+  const gainText = gain ? `${parseFloat(gain.gain) >= 0 ? '+' : ''}${gain.gain} ${gain.unit}` : null;
   const [showAdd, setShowAdd] = useState(false);
 
   useEffect(() => {
@@ -155,7 +176,7 @@ export default function GrowthScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.screenHeader}>
-          <View style={[styles.headerIcon, { backgroundColor: COLORS.growthLight }]}>
+          <View style={[styles.headerIcon, { backgroundColor: C.growthLight }]}>
             <Ionicons name="trending-up" size={24} color={COLORS.growth} />
           </View>
           <View>
@@ -169,22 +190,22 @@ export default function GrowthScreen() {
         {/* Current stats */}
         {latest && (
           <View style={[styles.statsCard, { backgroundColor: C.card, borderColor: C.border }]}>
-            {latest.weight && (
+            {latestWeight && (
               <View style={styles.statRow}>
-                <View style={[styles.statBadge, { backgroundColor: COLORS.growthLight }]}>
+                <View style={[styles.statBadge, { backgroundColor: C.growthLight }]}>
                   <Ionicons name="scale-outline" size={18} color={COLORS.growth} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.statLabel, { color: C.textSecondary }]}>Current Weight</Text>
                   <Text style={[styles.statVal, { color: C.text }]}>
-                    {parseFloat(latest.weight).toFixed(2)} {latest.unit || 'kg'}
+                    {parseFloat(latestWeight.weight).toFixed(2)} {latestWeight.unit || 'kg'}
                   </Text>
                 </View>
                 {gain && (
-                  <View style={[styles.gainBadge, { backgroundColor: COLORS.successLight }]}>
-                    <Ionicons name="arrow-up" size={12} color={COLORS.success} />
-                    <Text style={[styles.gainText, { color: COLORS.success }]}>
-                      +{gain.gain} {latest.unit || 'kg'}
+                  <View style={[styles.gainBadge, { backgroundColor: gainUp ? COLORS.successLight : COLORS.errorLight }]}>
+                    <Ionicons name={gainUp ? 'arrow-up' : 'arrow-down'} size={12} color={gainUp ? COLORS.success : COLORS.error} />
+                    <Text style={[styles.gainText, { color: gainUp ? COLORS.success : COLORS.error }]}>
+                      {gainText}
                     </Text>
                   </View>
                 )}
@@ -194,7 +215,7 @@ export default function GrowthScreen() {
               <>
                 <View style={[styles.divider, { backgroundColor: C.border }]} />
                 <View style={styles.statRow}>
-                  <View style={[styles.statBadge, { backgroundColor: COLORS.growthLight }]}>
+                  <View style={[styles.statBadge, { backgroundColor: C.growthLight }]}>
                     <Ionicons name="resize-outline" size={18} color={COLORS.growth} />
                   </View>
                   <View style={{ flex: 1 }}>
@@ -208,7 +229,7 @@ export default function GrowthScreen() {
               <>
                 <View style={[styles.divider, { backgroundColor: C.border }]} />
                 <View style={styles.statRow}>
-                  <View style={[styles.statBadge, { backgroundColor: COLORS.growthLight }]}>
+                  <View style={[styles.statBadge, { backgroundColor: C.growthLight }]}>
                     <Ionicons name="ellipse-outline" size={18} color={COLORS.growth} />
                   </View>
                   <View style={{ flex: 1 }}>
@@ -220,17 +241,17 @@ export default function GrowthScreen() {
             )}
             {gain && (
               <Text style={[styles.gainNote, { color: C.textMuted }]}>
-                +{gain.gain} {latest.unit || 'kg'} gained in {gain.daysDiff} days
+                {gainText} since first weigh-in ({gain.daysDiff} days)
               </Text>
             )}
           </View>
         )}
 
         {/* Mini chart */}
-        {logs.length >= 2 && (
+        {series.length >= 2 && (
           <View style={[styles.chartCard, { backgroundColor: C.card, borderColor: C.border }]}>
             <Text style={[styles.chartTitle, { color: C.text }]}>Weight Trend</Text>
-            <MiniChart data={logs} color={COLORS.growth} />
+            <MiniChart series={series} color={COLORS.growth} C={C} />
           </View>
         )}
 
@@ -253,7 +274,7 @@ export default function GrowthScreen() {
             </Text>
             {logs.map((log) => (
               <View key={log.id} style={[styles.logItem, { backgroundColor: C.card, borderColor: C.border }]}>
-                <View style={[styles.logIcon, { backgroundColor: COLORS.growthLight }]}>
+                <View style={[styles.logIcon, { backgroundColor: C.growthLight }]}>
                   <Ionicons name="trending-up" size={18} color={COLORS.growth} />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -287,6 +308,7 @@ export default function GrowthScreen() {
         onClose={() => setShowAdd(false)}
         onSave={handleSave}
         C={C}
+        defaultUnit={latestWeight?.unit || baby?.weightUnit || 'kg'}
       />
     </View>
   );
