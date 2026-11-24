@@ -7,7 +7,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useBabyStore } from '../store/useBabyStore';
-import { COLORS, DARK_COLORS } from '../constants/colors';
+import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
+import GradientView from '../components/GradientView';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SHADOW } from '../constants/theme';
 
 import SplashScreen from '../screens/SplashScreen';
@@ -27,7 +28,7 @@ import EditBabyScreen from '../screens/EditBabyScreen';
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-function TabBar({ state, descriptors, navigation }) {
+function TabBar({ state, navigation }) {
   const darkMode = useBabyStore((s) => s.darkMode);
   const C = darkMode ? DARK_COLORS : COLORS;
   const insets = useSafeAreaInsets();
@@ -37,18 +38,15 @@ function TabBar({ state, descriptors, navigation }) {
     { name: 'Feeding', label: 'Feed', icon: 'nutrition-outline', iconActive: 'nutrition' },
     { name: 'Sleep', label: 'Sleep', icon: 'moon-outline', iconActive: 'moon' },
     { name: 'Growth', label: 'Growth', icon: 'stats-chart-outline', iconActive: 'stats-chart' },
-    { name: 'More', label: 'More', icon: 'apps-outline', iconActive: 'apps' },
+    { name: 'More', label: 'More', icon: 'grid-outline', iconActive: 'grid' },
   ];
 
   return (
     <View
       style={[
         styles.tabBar,
-        {
-          backgroundColor: C.surface,
-          borderTopColor: C.border,
-          paddingBottom: insets.bottom || 6,
-        },
+        SHADOW.lg,
+        { backgroundColor: C.surface, borderColor: C.border, bottom: (insets.bottom || 0) + 12 },
       ]}
     >
       {state.routes.map((route, index) => {
@@ -58,8 +56,8 @@ function TabBar({ state, descriptors, navigation }) {
         return (
           <TouchableOpacity
             key={route.key}
-            style={styles.tabItem}
-            activeOpacity={0.7}
+            style={[styles.tabItem, isFocused && styles.tabItemActive]}
+            activeOpacity={0.75}
             accessibilityRole="button"
             accessibilityState={isFocused ? { selected: true } : {}}
             accessibilityLabel={tab.label}
@@ -74,21 +72,16 @@ function TabBar({ state, descriptors, navigation }) {
               }
             }}
           >
-            <View style={styles.tabInner}>
-              <View style={[
-                styles.tabIconWrap,
-                isFocused && { backgroundColor: C.primaryLight },
-              ]}>
-                <Ionicons
-                  name={isFocused ? tab.iconActive : tab.icon}
-                  size={20}
-                  color={isFocused ? C.primary : C.textMuted}
-                />
+            {isFocused ? (
+              <GradientView colors={GRADIENTS.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.activePill}>
+                <Ionicons name={tab.iconActive} size={18} color={COLORS.white} />
+                <Text style={styles.activeLabel} numberOfLines={1}>{tab.label}</Text>
+              </GradientView>
+            ) : (
+              <View style={styles.idleIcon}>
+                <Ionicons name={tab.icon} size={22} color={C.textMuted} />
               </View>
-              <Text style={[styles.tabLabel, { color: isFocused ? C.primary : C.textMuted }]}>
-                {tab.label}
-              </Text>
-            </View>
+            )}
           </TouchableOpacity>
         );
       })}
@@ -134,30 +127,41 @@ export default function AppNavigator() {
 
 const styles = StyleSheet.create({
   tabBar: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
     flexDirection: 'row',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: 6,
+    alignItems: 'center',
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    padding: 7,
   },
   tabItem: {
     flex: 1,
     alignItems: 'center',
-  },
-  tabInner: {
-    alignItems: 'center',
-    paddingVertical: 2,
-    gap: 3,
-    minHeight: 44,
     justifyContent: 'center',
+    minHeight: 48,
   },
-  tabIconWrap: {
-    width: 46,
-    height: 28,
-    borderRadius: 14,
+  tabItemActive: { flex: 1.7 },
+  activePill: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
+    height: 48,
+    alignSelf: 'stretch',
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 12,
   },
-  tabLabel: {
-    fontSize: 10,
-    fontWeight: FONT_WEIGHT.medium,
+  activeLabel: {
+    color: COLORS.white,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.bold,
+  },
+  idleIcon: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

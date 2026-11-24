@@ -9,13 +9,14 @@ import { format, differenceInCalendarDays } from 'date-fns';
 
 import { useBabyStore } from '../store/useBabyStore';
 import { useVaccinationStore, SCHEDULE_SOURCE } from '../store/useVaccinationStore';
-import { COLORS, DARK_COLORS } from '../constants/colors';
+import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
+import GradientView from '../components/GradientView';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
 import { parseDob, formatDobInput } from '../utils/formatters';
 
 const todayStr = () => format(new Date(), 'dd/MM/yyyy');
 
-function VaccineItem({ vacc, onPress, C }) {
+function VaccineItem({ vacc, onPress, C, errorTint }) {
   const due = new Date(vacc.dueDate);
   const daysUntil = differenceInCalendarDays(due, new Date());
   const isOverdue = !vacc.completed && daysUntil < 0;
@@ -28,7 +29,8 @@ function VaccineItem({ vacc, onPress, C }) {
       style={[
         styles.vaccItem,
         { backgroundColor: C.card, borderColor: C.border },
-        isOverdue && styles.vaccOverdue,
+        SHADOW.sm,
+        isOverdue && [styles.vaccOverdue, { backgroundColor: errorTint }],
         isDueSoon && styles.vaccSoon,
         vacc.completed && styles.vaccDone,
       ]}
@@ -37,7 +39,7 @@ function VaccineItem({ vacc, onPress, C }) {
     >
       <View style={[
         styles.vaccIcon,
-        { backgroundColor: vacc.completed ? COLORS.successLight : isOverdue ? COLORS.errorLight : COLORS.vaccinationLight },
+        { backgroundColor: vacc.completed ? C.medicineLight : isOverdue ? C.card : C.vaccinationLight },
       ]}>
         <Ionicons
           name={vacc.completed ? 'checkmark-circle' : isOverdue ? 'alert-circle' : 'shield-checkmark'}
@@ -69,6 +71,7 @@ export default function VaccinationScreen({ navigation }) {
   const babyId = baby?.id;
   const C = darkMode ? DARK_COLORS : COLORS;
   const insets = useSafeAreaInsets();
+  const errorTint = darkMode ? COLORS.error + '22' : COLORS.errorLight;
 
   const records = useVaccinationStore((s) => s.records[babyId]) || [];
   const { load, markCompleted, markNotCompleted } = useVaccinationStore.getState();
@@ -139,53 +142,84 @@ export default function VaccinationScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="chevron-back" size={24} color={C.text} />
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            style={[styles.backBtn, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}
+          >
+            <Ionicons name="chevron-back" size={22} color={C.text} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: C.text }]}>Vaccinations</Text>
-          <View style={{ width: 24 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.title, { color: C.text }]}>Vaccinations</Text>
+            <Text style={[styles.subtitle, { color: C.textSecondary }]}>Schedule & completed</Text>
+          </View>
         </View>
 
         {!birth ? (
           <View style={styles.emptyWrap}>
-            <Ionicons name="calendar-outline" size={48} color={C.textMuted} />
+            <View style={[styles.emptyIcon, { backgroundColor: C.vaccinationLight }]}>
+              <Ionicons name="calendar-outline" size={36} color={COLORS.vaccination} />
+            </View>
             <Text style={[styles.emptyTitle, { color: C.text }]}>Add a date of birth</Text>
-            <Text style={{ color: C.textSecondary, textAlign: 'center', marginBottom: SPACING.md }}>
+            <Text style={[styles.emptyText, { color: C.textSecondary }]}>
               The vaccine schedule is calculated from {baby?.name || "baby"}'s date of birth.
             </Text>
             <TouchableOpacity
               onPress={() => navigation.navigate('EditBaby', { babyId })}
-              style={[styles.markBtn, { backgroundColor: COLORS.vaccination, alignSelf: 'stretch' }]}
+              style={{ alignSelf: 'stretch' }}
+              activeOpacity={0.85}
               accessibilityRole="button"
             >
-              <Text style={styles.markBtnText}>Edit profile</Text>
+              <GradientView
+                colors={GRADIENTS.vaccination}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={[styles.markBtn, SHADOW.md]}
+              >
+                <Text style={styles.markBtnText}>Edit profile</Text>
+              </GradientView>
             </TouchableOpacity>
           </View>
         ) : (
           <>
-            {/* Progress */}
-            <View style={[styles.progressCard, { backgroundColor: COLORS.vaccinationLight }]}>
-              <Text style={[styles.progressNum, { color: COLORS.vaccination }]}>
-                {completed.length}/{records.length}
-              </Text>
-              <Text style={[styles.progressLabel, { color: COLORS.textSecondary }]}>Vaccines completed</Text>
-              <View style={[styles.progressBar, { backgroundColor: COLORS.vaccination + '30' }]}>
+            {/* Progress hero */}
+            <GradientView colors={GRADIENTS.vaccination} bubbles style={[styles.progressCard, SHADOW.lg]}>
+              <View style={styles.progressTop}>
+                <View style={styles.progressIcon}>
+                  <Ionicons name="shield-checkmark" size={26} color={COLORS.vaccination} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.progressNum}>
+                    {completed.length}/{records.length}
+                  </Text>
+                  <Text style={styles.progressLabel}>Vaccines completed</Text>
+                </View>
+              </View>
+              <View style={styles.progressBar}>
                 <View
                   style={[
                     styles.progressFill,
-                    { backgroundColor: COLORS.vaccination, width: `${records.length ? (completed.length / records.length) * 100 : 0}%` },
+                    { width: `${records.length ? (completed.length / records.length) * 100 : 0}%` },
                   ]}
                 />
               </View>
-            </View>
+              {upcoming.length > 0 && (
+                <View style={styles.heroChip}>
+                  <Ionicons name="calendar-outline" size={13} color={COLORS.white} />
+                  <Text style={styles.heroChipText} numberOfLines={1}>
+                    Next: {upcoming[0].name} · {format(new Date(upcoming[0].dueDate), 'MMM d')}
+                  </Text>
+                </View>
+              )}
+            </GradientView>
 
-            <Text style={{ color: C.textMuted, fontSize: FONT_SIZE.xs, marginBottom: SPACING.md }}>
+            <Text style={[styles.sourceNote, { color: C.textMuted }]}>
               Schedule based on {SCHEDULE_SOURCE}. Region-specific and optional vaccines are not listed —
               always follow your pediatrician's advice.
             </Text>
 
             {overdue.length > 0 && (
-              <View style={[styles.overdueAlert, { backgroundColor: COLORS.errorLight }]}>
+              <View style={[styles.overdueAlert, { backgroundColor: errorTint, borderColor: COLORS.error + '33' }]}>
                 <Ionicons name="alert-circle" size={18} color={COLORS.error} />
                 <Text style={[styles.overdueText, { color: COLORS.error }]}>
                   {overdue.length} vaccine{overdue.length > 1 ? 's' : ''} overdue — please consult your doctor
@@ -194,7 +228,7 @@ export default function VaccinationScreen({ navigation }) {
             )}
 
             {/* Tabs */}
-            <View style={[styles.tabs, { backgroundColor: C.card, borderColor: C.border }]}>
+            <View style={[styles.tabs, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
               {[
                 { value: 'upcoming', label: `Upcoming (${upcoming.length + overdue.length})` },
                 { value: 'done', label: `Done (${completed.length})` },
@@ -202,20 +236,37 @@ export default function VaccinationScreen({ navigation }) {
                 <TouchableOpacity
                   key={t.value}
                   onPress={() => setTab(t.value)}
-                  style={[styles.tab, tab === t.value && styles.tabActive]}
+                  style={styles.tab}
                   accessibilityRole="tab"
                   accessibilityState={{ selected: tab === t.value }}
                 >
-                  <Text style={[styles.tabText, { color: tab === t.value ? COLORS.white : C.textSecondary }]}>
-                    {t.label}
-                  </Text>
+                  {tab === t.value ? (
+                    <GradientView
+                      colors={GRADIENTS.vaccination}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.tabInner}
+                    >
+                      <Text style={[styles.tabText, { color: COLORS.white }]}>{t.label}</Text>
+                    </GradientView>
+                  ) : (
+                    <View style={styles.tabInner}>
+                      <Text style={[styles.tabText, { color: C.textSecondary }]}>{t.label}</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               ))}
             </View>
 
             {displayList.length === 0 && (
               <View style={styles.emptyWrap}>
-                <Ionicons name={tab === 'done' ? 'shield-checkmark' : 'checkmark-done-circle'} size={48} color={C.textMuted} />
+                <View style={[styles.emptyIcon, { backgroundColor: C.vaccinationLight }]}>
+                  <Ionicons
+                    name={tab === 'done' ? 'shield-checkmark' : 'checkmark-done-circle'}
+                    size={36}
+                    color={COLORS.vaccination}
+                  />
+                </View>
                 <Text style={[styles.emptyTitle, { color: C.text }]}>
                   {tab === 'done' ? 'No vaccines completed yet' : 'All scheduled vaccines are done!'}
                 </Text>
@@ -223,7 +274,7 @@ export default function VaccinationScreen({ navigation }) {
             )}
 
             {displayList.map((v) => (
-              <VaccineItem key={v.id} vacc={v} onPress={openItem} C={C} />
+              <VaccineItem key={v.id} vacc={v} onPress={openItem} C={C} errorTint={errorTint} />
             ))}
           </>
         )}
@@ -232,19 +283,28 @@ export default function VaccinationScreen({ navigation }) {
       {/* Mark complete modal */}
       <Modal visible={!!markTarget} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setMarkTarget(null)}>
         <View style={[styles.modal, { backgroundColor: C.background }]}>
-          <View style={styles.modalHandle} />
+          <View style={[styles.modalHandle, { backgroundColor: C.border }]} />
           <View style={styles.modalHeader}>
             <Text style={[styles.modalTitle, { color: C.text }]}>Mark as Done</Text>
-            <TouchableOpacity onPress={() => setMarkTarget(null)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-              <Ionicons name="close" size={24} color={C.textSecondary} />
+            <TouchableOpacity
+              onPress={() => setMarkTarget(null)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={[styles.backBtn, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}
+            >
+              <Ionicons name="close" size={22} color={C.textSecondary} />
             </TouchableOpacity>
           </View>
           <View style={styles.modalContent}>
-            <Text style={[styles.modalVaccName, { color: C.text }]}>{markTarget?.name}</Text>
+            <View style={[styles.modalVaccCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
+              <View style={[styles.vaccIcon, { backgroundColor: C.vaccinationLight }]}>
+                <Ionicons name="shield-checkmark" size={20} color={COLORS.vaccination} />
+              </View>
+              <Text style={[styles.modalVaccName, { color: C.text }]}>{markTarget?.name}</Text>
+            </View>
 
             <Text style={[styles.modalLabel, { color: C.textSecondary }]}>DATE GIVEN</Text>
             <TextInput
-              style={[styles.modalInput, { color: C.text, backgroundColor: C.card, borderColor: C.border, minHeight: 0 }]}
+              style={[styles.modalInput, styles.dateInput, { color: C.text, backgroundColor: C.card, borderColor: C.border }]}
               value={markDate}
               onChangeText={(t) => setMarkDate(formatDobInput(t))}
               placeholder="DD/MM/YYYY"
@@ -253,7 +313,7 @@ export default function VaccinationScreen({ navigation }) {
               maxLength={10}
               accessibilityLabel="Date given"
             />
-            {dateError && <Text style={{ color: COLORS.error, fontSize: 13, marginTop: -4, marginBottom: 8 }}>{dateError}</Text>}
+            {dateError && <Text style={styles.dateError}>{dateError}</Text>}
 
             <Text style={[styles.modalLabel, { color: C.textSecondary }]}>NOTES (optional)</Text>
             <TextInput
@@ -267,12 +327,20 @@ export default function VaccinationScreen({ navigation }) {
             <TouchableOpacity
               onPress={handleMark}
               disabled={!!dateError}
-              style={[styles.markBtn, { backgroundColor: COLORS.vaccination, opacity: dateError ? 0.5 : 1 }]}
+              style={{ opacity: dateError ? 0.5 : 1 }}
+              activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel="Confirm vaccination complete"
             >
-              <Ionicons name="shield-checkmark" size={20} color={COLORS.white} />
-              <Text style={styles.markBtnText}>Mark Complete</Text>
+              <GradientView
+                colors={GRADIENTS.vaccination}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={[styles.markBtn, SHADOW.md]}
+              >
+                <Ionicons name="shield-checkmark" size={20} color={COLORS.white} />
+                <Text style={styles.markBtnText}>Mark Complete</Text>
+              </GradientView>
             </TouchableOpacity>
           </View>
         </View>
@@ -284,42 +352,80 @@ export default function VaccinationScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { paddingHorizontal: SPACING.lg },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.xl },
-  title: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold },
-  progressCard: { alignItems: 'center', padding: SPACING.lg, borderRadius: RADIUS.xl, marginBottom: SPACING.md, gap: 8 },
-  progressNum: { fontSize: FONT_SIZE.hero, fontWeight: FONT_WEIGHT.bold },
-  progressLabel: { fontSize: FONT_SIZE.md },
-  progressBar: { width: '100%', height: 8, borderRadius: 4, overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: 4 },
-  overdueAlert: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: SPACING.md, borderRadius: RADIUS.lg, marginBottom: SPACING.md },
-  overdueText: { flex: 1, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: SPACING.lg },
+  backBtn: {
+    width: 42, height: 42, borderRadius: 14, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  title: { fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.8 },
+  subtitle: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
+  progressCard: { padding: SPACING.lg, borderRadius: RADIUS.xxl, marginBottom: SPACING.md, gap: SPACING.md },
+  progressTop: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
+  progressIcon: {
+    width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.white,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  progressNum: { fontSize: FONT_SIZE.hero, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -1 },
+  progressLabel: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, color: 'rgba(255,255,255,0.9)' },
+  progressBar: {
+    width: '100%', height: 10, borderRadius: 5, overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  progressFill: { height: '100%', borderRadius: 5, backgroundColor: COLORS.white },
+  heroChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', maxWidth: '100%',
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  heroChipText: { flexShrink: 1, fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: COLORS.white },
+  sourceNote: { fontSize: FONT_SIZE.xs, lineHeight: 16, marginBottom: SPACING.md, marginHorizontal: 4 },
+  overdueAlert: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, padding: SPACING.md,
+    borderRadius: RADIUS.lg, borderWidth: 1, marginBottom: SPACING.md,
+  },
+  overdueText: { flex: 1, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
   tabs: { flexDirection: 'row', borderRadius: RADIUS.xl, borderWidth: 1, padding: 4, marginBottom: SPACING.md },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: RADIUS.lg },
-  tabActive: { backgroundColor: COLORS.vaccination },
-  tabText: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold },
+  tab: { flex: 1 },
+  tabInner: { alignItems: 'center', paddingVertical: 11, borderRadius: RADIUS.lg },
+  tabText: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.heavy },
   emptyWrap: { alignItems: 'center', paddingVertical: SPACING.xxl, gap: SPACING.md },
-  emptyTitle: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.semibold },
-  vaccItem: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, padding: SPACING.md, borderRadius: RADIUS.xl, borderWidth: 1, marginBottom: SPACING.sm },
-  vaccOverdue: { borderColor: COLORS.error + '40', backgroundColor: COLORS.errorLight },
-  vaccSoon: { borderColor: COLORS.vaccination + '40' },
+  emptyIcon: { width: 72, height: 72, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  emptyTitle: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3, textAlign: 'center' },
+  emptyText: { textAlign: 'center', fontSize: FONT_SIZE.md, lineHeight: 21, marginBottom: SPACING.md },
+  vaccItem: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.md, padding: SPACING.md,
+    borderRadius: RADIUS.xl, borderWidth: 1, marginBottom: SPACING.sm, minHeight: 70,
+  },
+  vaccOverdue: { borderColor: COLORS.error + '40' },
+  vaccSoon: { borderColor: COLORS.vaccination + '60' },
   vaccDone: { opacity: 0.7 },
-  vaccIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  vaccName: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold },
+  vaccIcon: { width: 44, height: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  vaccName: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
   vaccDue: { fontSize: FONT_SIZE.sm, marginTop: 2 },
   modal: { flex: 1, paddingHorizontal: SPACING.lg },
-  modalHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: COLORS.gray200, alignSelf: 'center', marginTop: 12, marginBottom: 8 },
+  modalHandle: { width: 40, height: 5, borderRadius: 3, alignSelf: 'center', marginTop: 12, marginBottom: 8 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACING.md },
-  modalTitle: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold },
+  modalTitle: { fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.8 },
   modalContent: { gap: SPACING.md },
-  modalVaccName: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.semibold },
-  modalLabel: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, letterSpacing: 1 },
+  modalVaccCard: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.md, padding: SPACING.md,
+    borderRadius: RADIUS.xl, borderWidth: 1,
+  },
+  modalVaccName: { flex: 1, fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
+  modalLabel: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.heavy, letterSpacing: 1.2, marginLeft: 4 },
   modalInput: {
     minHeight: 80, borderRadius: RADIUS.lg, borderWidth: 1.5,
-    paddingHorizontal: SPACING.md, paddingVertical: 12, fontSize: FONT_SIZE.md, textAlignVertical: 'top',
+    paddingHorizontal: SPACING.md, paddingVertical: 12, fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semibold, textAlignVertical: 'top',
+  },
+  dateInput: { minHeight: 56, textAlignVertical: 'center' },
+  dateError: {
+    color: COLORS.error, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold,
+    marginTop: -4, marginBottom: 8, marginLeft: 4,
   },
   markBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    padding: 18, borderRadius: RADIUS.xl, gap: 8, ...SHADOW.md,
+    padding: 18, borderRadius: RADIUS.xl, gap: 8,
   },
-  markBtnText: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: COLORS.white },
+  markBtnText: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white },
 });

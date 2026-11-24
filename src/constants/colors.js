@@ -1,75 +1,80 @@
 // Cradlewell Bloom Design System — Color Tokens
-// Primary accent: #6388FF (user-specified healthcare blue)
+// "Bloom" palette: soft violet → blossom pink brand, lavender-cream surfaces,
+// and bright-but-gentle category colours.
 
 export const COLORS = {
   // Brand
-  primary: '#6388FF',
-  primaryLight: '#EEF2FF',
-  primaryDark: '#4B6FE8',
+  primary: '#7C5CFC',
+  primaryLight: '#F1EDFF',
+  primaryDark: '#5B3FD9',
+  accent: '#FF7EB3',
+  accentLight: '#FFEAF3',
 
   // Surfaces
-  background: '#FFFFFF',
-  backgroundDark: '#0F1117',
-  card: '#F8FAFF',
-  cardDark: '#1A1F2E',
+  background: '#FAF7FF',
+  backgroundDark: '#110D1D',
+  card: '#FFFFFF',
+  cardDark: '#1C1730',
   surface: '#FFFFFF',
-  surfaceDark: '#232836',
+  surfaceDark: '#241E3B',
 
   // Text
-  text: '#1A2340',
-  textSecondary: '#64748B',
-  textMuted: '#94A3B8',
-  textDark: '#F1F5F9',
-  textSecondaryDark: '#94A3B8',
+  text: '#21183C',
+  textSecondary: '#6B6485',
+  textMuted: '#A49DBB',
+  textDark: '#F4F1FF',
+  textSecondaryDark: '#B3ACCB',
+  textMutedDark: '#7D7699',
 
   // Borders
-  border: '#E8EEFF',
-  borderDark: '#2D3547',
+  border: '#EEE9F8',
+  borderDark: '#332B4F',
 
   // Category Colors
-  feeding: '#FF6B9D',
-  feedingLight: '#FFF0F6',
-  feedingDark: '#2D1020',
+  feeding: '#FF5C8A',
+  feedingLight: '#FFEDF2',
+  feedingDark: '#3A1426',
 
-  sleep: '#8B5CF6',
-  sleepLight: '#F5F3FF',
-  sleepDark: '#1E1530',
+  sleep: '#7B6CF6',
+  sleepLight: '#EFEDFF',
+  sleepDark: '#221C45',
 
-  diaper: '#F59E0B',
-  diaperLight: '#FFFBEB',
-  diaperDark: '#2A1F00',
+  diaper: '#F5A623',
+  diaperLight: '#FFF5E1',
+  diaperDark: '#36260A',
 
-  medicine: '#10B981',
-  medicineLight: '#ECFDF5',
-  medicineDark: '#0A2318',
+  medicine: '#1FBF9A',
+  medicineLight: '#E3F9F3',
+  medicineDark: '#0D2E27',
 
-  growth: '#06B6D4',
-  growthLight: '#ECFEFF',
-  growthDark: '#042830',
+  growth: '#22A6F2',
+  growthLight: '#E4F4FE',
+  growthDark: '#0B2A3D',
 
-  vaccination: '#F97316',
-  vaccinationLight: '#FFF7ED',
+  vaccination: '#FF8547',
+  vaccinationLight: '#FFF0E7',
+  vaccinationDark: '#3A1D0E',
 
   // Semantic
-  success: '#10B981',
-  successLight: '#ECFDF5',
-  error: '#EF4444',
-  errorLight: '#FEF2F2',
-  warning: '#F59E0B',
-  warningLight: '#FFFBEB',
+  success: '#1FBF9A',
+  successLight: '#E3F9F3',
+  error: '#F0476B',
+  errorLight: '#FFEEF2',
+  warning: '#F5A623',
+  warningLight: '#FFF5E1',
 
   // Neutral scale
   white: '#FFFFFF',
-  gray50: '#F8FAFC',
-  gray100: '#F1F5F9',
-  gray200: '#E2E8F0',
-  gray300: '#CBD5E1',
-  gray400: '#94A3B8',
-  gray500: '#64748B',
-  gray600: '#475569',
-  gray700: '#334155',
-  gray800: '#1E293B',
-  gray900: '#0F172A',
+  gray50: '#FAF9FD',
+  gray100: '#F3F1F9',
+  gray200: '#E5E1F0',
+  gray300: '#CEC8DF',
+  gray400: '#A49DBB',
+  gray500: '#6B6485',
+  gray600: '#4E4767',
+  gray700: '#37304F',
+  gray800: '#241E3B',
+  gray900: '#140F24',
   black: '#000000',
 
   // Night mode special
@@ -83,11 +88,28 @@ export const DARK_COLORS = {
   surface: COLORS.surfaceDark,
   text: COLORS.textDark,
   textSecondary: COLORS.textSecondaryDark,
+  textMuted: COLORS.textMutedDark,
   border: COLORS.borderDark,
   feedingLight: COLORS.feedingDark,
   sleepLight: COLORS.sleepDark,
   diaperLight: COLORS.diaperDark,
   medicineLight: COLORS.medicineDark,
   growthLight: COLORS.growthDark,
-  primaryLight: '#1A2240',
+  vaccinationLight: COLORS.vaccinationDark,
+  primaryLight: '#2A2150',
+  accentLight: '#3A1A2E',
+};
+
+// Gradient stops used by <GradientView>. Each is [from, to].
+export const GRADIENTS = {
+  brand: ['#8E6CFF', '#FF7EB3'],
+  brandDeep: ['#6A4CF5', '#C35CF0'],
+  sunrise: ['#FFB07C', '#FF7EB3'],
+  feeding: ['#FF7EA6', '#FF5C8A'],
+  sleep: ['#9A8CFF', '#6656E8'],
+  diaper: ['#FFC857', '#F59E0B'],
+  medicine: ['#4FD8B5', '#16A884'],
+  growth: ['#5CC6FF', '#1E90E0'],
+  vaccination: ['#FFAA6E', '#FF7036'],
+  night: ['#2A2150', '#120E22'],
 };

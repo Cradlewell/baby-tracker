@@ -4,7 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useBabyStore } from '../store/useBabyStore';
-import { COLORS, DARK_COLORS } from '../constants/colors';
+import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
+import GradientView from '../components/GradientView';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
 import { calcAge } from '../utils/formatters';
 
@@ -12,7 +13,7 @@ function MenuSection({ title, items, C }) {
   return (
     <View style={styles.section}>
       {title && <Text style={[styles.sectionTitle, { color: C.textSecondary }]}>{title}</Text>}
-      <View style={[styles.menuCard, { backgroundColor: C.card, borderColor: C.border }]}>
+      <View style={[styles.menuCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
         {items.map((item, i) => (
           <View key={item.label}>
             <TouchableOpacity
@@ -21,9 +22,15 @@ function MenuSection({ title, items, C }) {
               accessibilityRole="button"
               accessibilityLabel={item.label}
             >
-              <View style={[styles.menuIcon, { backgroundColor: item.color + '18' }]}>
-                <Ionicons name={item.icon} size={20} color={item.color} />
-              </View>
+              {item.gradient ? (
+                <GradientView colors={item.gradient} style={styles.menuIcon}>
+                  <Ionicons name={item.icon} size={20} color={COLORS.white} />
+                </GradientView>
+              ) : (
+                <View style={[styles.menuIcon, { backgroundColor: C.border }]}>
+                  <Ionicons name={item.icon} size={20} color={C.textSecondary} />
+                </View>
+              )}
               <View style={{ flex: 1 }}>
                 <Text style={[styles.menuLabel, { color: C.text }]}>{item.label}</Text>
                 {item.sub && <Text style={[styles.menuSub, { color: C.textSecondary }]}>{item.sub}</Text>}
@@ -58,18 +65,31 @@ export default function MoreScreen({ navigation }) {
         ]}
         showsVerticalScrollIndicator={false}
       >
+        <Text style={[styles.pageTitle, { color: C.text }]}>More</Text>
+
         {/* Baby card */}
         {baby && (
-          <View style={[styles.babyCard, { backgroundColor: C.primaryLight }]}>
-            <View style={styles.babyAvatar}>
-              <Text style={styles.babyAvatarText}>{baby.name?.[0]?.toUpperCase()}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.babyName, { color: COLORS.primary }]}>{baby.name}</Text>
-              <Text style={[styles.babyAge, { color: C.textSecondary }]}>{calcAge(baby.dob)}</Text>
-            </View>
-            <Ionicons name={baby.gender === 'girl' ? 'female' : baby.gender === 'boy' ? 'male' : 'person'} size={20} color={COLORS.primary} />
-          </View>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => navigation.navigate('EditBaby', { babyId: baby.id })}
+            accessibilityRole="button"
+            accessibilityLabel={`Edit ${baby.name}'s profile`}
+          >
+            <GradientView colors={GRADIENTS.brand} bubbles style={[styles.babyCard, SHADOW.lg]}>
+              <View style={styles.babyAvatarRing}>
+                <View style={styles.babyAvatar}>
+                  <Text style={styles.babyAvatarText}>{baby.name?.[0]?.toUpperCase()}</Text>
+                </View>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.babyName} numberOfLines={1}>{baby.name}</Text>
+                <Text style={styles.babyAge}>{calcAge(baby.dob)}</Text>
+              </View>
+              <View style={styles.babyChip}>
+                <Ionicons name={baby.gender === 'girl' ? 'female' : baby.gender === 'boy' ? 'male' : 'person'} size={16} color={COLORS.white} />
+              </View>
+            </GradientView>
+          </TouchableOpacity>
         )}
 
         <MenuSection
@@ -81,6 +101,7 @@ export default function MoreScreen({ navigation }) {
               sub: 'Urine, stool, both',
               icon: 'water',
               color: COLORS.diaper,
+              gradient: GRADIENTS.diaper,
               onPress: () => navigation.navigate('Diaper'),
             },
             {
@@ -88,6 +109,7 @@ export default function MoreScreen({ navigation }) {
               sub: 'Track doses given or skipped',
               icon: 'medical',
               color: COLORS.medicine,
+              gradient: GRADIENTS.medicine,
               onPress: () => navigation.navigate('Medicine'),
             },
             {
@@ -95,6 +117,7 @@ export default function MoreScreen({ navigation }) {
               sub: 'Schedule & completed',
               icon: 'shield-checkmark',
               color: COLORS.vaccination,
+              gradient: GRADIENTS.vaccination,
               onPress: () => navigation.navigate('Vaccination'),
             },
           ]}
@@ -109,6 +132,7 @@ export default function MoreScreen({ navigation }) {
               sub: "Today's full report",
               icon: 'bar-chart',
               color: COLORS.primary,
+              gradient: GRADIENTS.brandDeep,
               onPress: () => navigation.navigate('Summary'),
             },
           ]}
@@ -137,26 +161,32 @@ export default function MoreScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { paddingHorizontal: SPACING.lg },
+  pageTitle: { fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.8, marginBottom: SPACING.md },
   babyCard: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
-    padding: SPACING.md, borderRadius: RADIUS.xl, marginBottom: SPACING.lg,
+    padding: SPACING.lg, borderRadius: RADIUS.xxl, marginBottom: SPACING.lg,
   },
+  babyAvatarRing: { padding: 4, borderRadius: 36, backgroundColor: 'rgba(255,255,255,0.25)' },
   babyAvatar: {
-    width: 52, height: 52, borderRadius: 26, backgroundColor: COLORS.primary,
+    width: 54, height: 54, borderRadius: 27, backgroundColor: COLORS.white,
     alignItems: 'center', justifyContent: 'center',
   },
-  babyAvatarText: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold, color: COLORS.white },
-  babyName: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold },
-  babyAge: { fontSize: FONT_SIZE.sm, marginTop: 2 },
-  section: { marginBottom: SPACING.md },
-  sectionTitle: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, letterSpacing: 1, marginBottom: SPACING.sm },
+  babyAvatarText: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.heavy, color: COLORS.primary },
+  babyName: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.4 },
+  babyAge: { fontSize: FONT_SIZE.sm, marginTop: 3, color: 'rgba(255,255,255,0.9)', fontWeight: FONT_WEIGHT.medium },
+  babyChip: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  section: { marginBottom: SPACING.lg },
+  sectionTitle: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.heavy, letterSpacing: 1.2, marginBottom: 10, marginLeft: 4 },
   menuCard: { borderRadius: RADIUS.xl, borderWidth: 1, overflow: 'hidden' },
-  menuRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, padding: SPACING.md, minHeight: 64 },
-  menuIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  menuLabel: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold },
+  menuRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, padding: SPACING.md, minHeight: 70 },
+  menuIcon: { width: 44, height: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  menuLabel: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
   menuSub: { fontSize: FONT_SIZE.sm, marginTop: 2 },
-  divider: { height: 1, marginHorizontal: SPACING.md },
+  divider: { height: 1, marginLeft: 76, marginRight: SPACING.md },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.full },
   badgeText: { fontSize: FONT_SIZE.xs, color: COLORS.white, fontWeight: FONT_WEIGHT.bold },
-  version: { textAlign: 'center', fontSize: FONT_SIZE.sm, marginTop: SPACING.xl },
+  version: { textAlign: 'center', fontSize: FONT_SIZE.sm, marginTop: SPACING.md },
 });

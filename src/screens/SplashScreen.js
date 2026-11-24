@@ -4,7 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBabyStore } from '../store/useBabyStore';
 import { useFeedingStore } from '../store/useFeedingStore';
 import { useSleepStore } from '../store/useSleepStore';
-import { COLORS } from '../constants/colors';
+import { COLORS, GRADIENTS } from '../constants/colors';
+import GradientView from '../components/GradientView';
 import { FONT_SIZE, FONT_WEIGHT } from '../constants/theme';
 
 export default function SplashScreen({ navigation }) {
@@ -37,48 +38,75 @@ export default function SplashScreen({ navigation }) {
   }, []);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <GradientView colors={GRADIENTS.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} bubbles style={[styles.container, { paddingTop: insets.top }]}>
       <Animated.View style={[styles.logoWrap, { opacity, transform: [{ scale }] }]}>
-        <Image
-          source={require('../../assets/logo.png')}
-          style={styles.logoImage}
-          resizeMode="contain"
-        />
+        <View style={styles.logoHalo}>
+          <View style={styles.logoCard}>
+            <Image
+              source={require('../../assets/logo.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
+          </View>
+        </View>
         <Text style={styles.appName}>Cradlewell Bloom</Text>
       </Animated.View>
-      <Animated.Text style={[styles.tagline, { opacity: tagOpacity }]}>
-        Your comfort is our care
-      </Animated.Text>
-    </View>
+      <Animated.View style={[styles.taglinePill, { opacity: tagOpacity }]}>
+        <Text style={styles.tagline}>Your comfort is our care</Text>
+      </Animated.View>
+    </GradientView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 16,
+    gap: 22,
   },
   logoWrap: {
     alignItems: 'center',
-    gap: 16,
+    gap: 22,
+  },
+  logoHalo: {
+    padding: 14,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  logoCard: {
+    width: 136,
+    height: 136,
+    borderRadius: 46,
+    backgroundColor: COLORS.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#3A1F8F',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.3,
+    shadowRadius: 28,
+    elevation: 14,
   },
   logoImage: {
-    width: 120,
-    height: 120,
+    width: 96,
+    height: 96,
   },
   appName: {
-    fontSize: 32,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.primary,
-    letterSpacing: -0.5,
+    fontSize: 34,
+    fontWeight: FONT_WEIGHT.heavy,
+    color: COLORS.white,
+    letterSpacing: -0.8,
+  },
+  taglinePill: {
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
   tagline: {
     fontSize: FONT_SIZE.md,
-    color: COLORS.textSecondary,
-    fontWeight: FONT_WEIGHT.light,
+    color: COLORS.white,
+    fontWeight: FONT_WEIGHT.semibold,
     letterSpacing: 0.3,
   },
 });

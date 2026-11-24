@@ -8,7 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useBabyStore } from '../store/useBabyStore';
 import { useGrowthStore } from '../store/useGrowthStore';
 import { validateDob, formatDobInput, parseDob, parsePositiveNumber } from '../utils/formatters';
-import { COLORS } from '../constants/colors';
+import { COLORS, GRADIENTS } from '../constants/colors';
+import GradientView from '../components/GradientView';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
 
 const { width: W } = Dimensions.get('window');
@@ -20,15 +21,22 @@ function ProgressDots({ current, total }) {
   return (
     <View style={styles.dots}>
       {Array.from({ length: total }).map((_, i) => (
-        <View
-          key={i}
-          style={[
-            styles.dot,
-            i === current && styles.dotActive,
-            i < current && styles.dotDone,
-          ]}
-        />
+        i <= current ? (
+          <GradientView key={i} colors={GRADIENTS.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.dot, styles.dotOn]} />
+        ) : (
+          <View key={i} style={styles.dot} />
+        )
       ))}
+    </View>
+  );
+}
+
+function StepBadge({ emoji }) {
+  return (
+    <View style={styles.badgeHalo}>
+      <GradientView colors={GRADIENTS.brand} style={styles.badge}>
+        <Text style={styles.stepEmoji}>{emoji}</Text>
+      </GradientView>
     </View>
   );
 }
@@ -137,7 +145,7 @@ export default function OnboardingScreen({ navigation }) {
       case 'name':
         return (
           <View style={styles.stepContent}>
-            <Text style={styles.stepEmoji}>👶</Text>
+            <StepBadge emoji="👶" />
             <Text style={styles.stepTitle}>What's your baby's name?</Text>
             <Text style={styles.stepSub}>You can change this anytime</Text>
             <TextInput
@@ -155,7 +163,7 @@ export default function OnboardingScreen({ navigation }) {
       case 'dob':
         return (
           <View style={styles.stepContent}>
-            <Text style={styles.stepEmoji}>🎂</Text>
+            <StepBadge emoji="🎂" />
             <Text style={styles.stepTitle}>When was {form.name || 'baby'} born?</Text>
             <Text style={styles.stepSub}>Enter date of birth</Text>
             <TextInput
@@ -173,7 +181,7 @@ export default function OnboardingScreen({ navigation }) {
       case 'gender':
         return (
           <View style={styles.stepContent}>
-            <Text style={styles.stepEmoji}>💝</Text>
+            <StepBadge emoji="💝" />
             <Text style={styles.stepTitle}>Gender</Text>
             <Text style={styles.stepSub}>Helps personalize your experience</Text>
             <View style={styles.pillRow}>
@@ -195,7 +203,7 @@ export default function OnboardingScreen({ navigation }) {
       case 'weight':
         return (
           <View style={styles.stepContent}>
-            <Text style={styles.stepEmoji}>⚖️</Text>
+            <StepBadge emoji="⚖️" />
             <Text style={styles.stepTitle}>Birth weight</Text>
             <Text style={styles.stepSub}>Optional — track growth from day one</Text>
             <View style={styles.inputRow}>
@@ -227,7 +235,7 @@ export default function OnboardingScreen({ navigation }) {
       case 'feeding':
         return (
           <View style={styles.stepContent}>
-            <Text style={styles.stepEmoji}>🍼</Text>
+            <StepBadge emoji="🍼" />
             <Text style={styles.stepTitle}>Feeding type</Text>
             <Text style={styles.stepSub}>We'll customize your tracker for this</Text>
             <View style={styles.pillColumn}>
@@ -255,20 +263,23 @@ export default function OnboardingScreen({ navigation }) {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      <GradientView colors={GRADIENTS.brand} style={styles.glow} pointerEvents="none" />
       <View style={[styles.inner, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
         {/* Header */}
         <View style={styles.header}>
           {step > 0 ? (
             <TouchableOpacity onPress={goBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-              <Ionicons name="chevron-back" size={24} color={COLORS.text} />
+              <View style={styles.backBtn}>
+                <Ionicons name="chevron-back" size={22} color={COLORS.text} />
+              </View>
             </TouchableOpacity>
-          ) : <View style={{ width: 24 }} />}
+          ) : <View style={{ width: 42 }} />}
           <ProgressDots current={step} total={STEPS.length} />
           {canSkip ? (
             <TouchableOpacity onPress={skip} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
               <Text style={styles.skipText}>Skip</Text>
             </TouchableOpacity>
-          ) : <View style={{ width: 40 }} />}
+          ) : <View style={{ width: 42 }} />}
         </View>
 
         {/* Content */}
@@ -285,15 +296,20 @@ export default function OnboardingScreen({ navigation }) {
         {/* CTA */}
         <TouchableOpacity
           onPress={goNext}
-          style={[styles.cta, (!canContinue() || saving) && styles.ctaDisabled]}
+          activeOpacity={0.85}
+          style={(!canContinue() || saving) && styles.ctaDisabled}
           disabled={!canContinue() || saving}
           accessibilityRole="button"
           accessibilityLabel={step === STEPS.length - 1 ? 'Get started' : 'Continue'}
         >
-          <Text style={styles.ctaText}>
-            {step === STEPS.length - 1 ? "Let's go 🎉" : 'Continue'}
-          </Text>
-          <Ionicons name="arrow-forward" size={18} color={COLORS.white} />
+          <GradientView colors={GRADIENTS.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.cta}>
+            <Text style={styles.ctaText}>
+              {step === STEPS.length - 1 ? "Let's go 🎉" : 'Continue'}
+            </Text>
+            <View style={styles.ctaArrow}>
+              <Ionicons name="arrow-forward" size={18} color={COLORS.white} />
+            </View>
+          </GradientView>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -302,66 +318,88 @@ export default function OnboardingScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  glow: {
+    position: 'absolute', top: -W * 0.55, left: -W * 0.25,
+    width: W * 1.5, height: W * 1.1, borderRadius: W, opacity: 0.16,
+  },
   inner: { flex: 1, paddingHorizontal: SPACING.lg },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.xl },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.lg },
+  backBtn: {
+    width: 42, height: 42, borderRadius: 14, backgroundColor: COLORS.white,
+    alignItems: 'center', justifyContent: 'center', ...SHADOW.sm,
+  },
   dots: { flexDirection: 'row', gap: 6 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.border },
-  dotActive: { width: 20, backgroundColor: COLORS.primary },
-  dotDone: { backgroundColor: COLORS.primaryLight },
-  skipText: { fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, fontWeight: FONT_WEIGHT.medium },
-  errorText: { fontSize: FONT_SIZE.sm, color: COLORS.error, marginTop: SPACING.sm, textAlign: 'center' },
+  dot: { width: 22, height: 6, borderRadius: 3, backgroundColor: COLORS.gray200 },
+  dotOn: { width: 30 },
+  skipText: { fontSize: FONT_SIZE.sm, color: COLORS.primary, fontWeight: FONT_WEIGHT.bold, width: 42, textAlign: 'right' },
+  errorText: { fontSize: FONT_SIZE.sm, color: COLORS.error, marginTop: SPACING.xs, textAlign: 'center', fontWeight: FONT_WEIGHT.medium },
   scrollContent: { flexGrow: 1, justifyContent: 'center' },
   stepContent: { alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.xl },
-  stepEmoji: { fontSize: 64 },
-  stepTitle: { fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.bold, color: COLORS.text, textAlign: 'center' },
-  stepSub: { fontSize: FONT_SIZE.md, color: COLORS.textSecondary, textAlign: 'center' },
+  badgeHalo: { padding: 10, borderRadius: 70, backgroundColor: COLORS.primaryLight, marginBottom: SPACING.sm },
+  badge: {
+    width: 112, height: 112, borderRadius: 40, alignItems: 'center', justifyContent: 'center',
+    ...SHADOW.lg,
+  },
+  stepEmoji: { fontSize: 56 },
+  stepTitle: { fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.heavy, color: COLORS.text, textAlign: 'center', letterSpacing: -0.6 },
+  stepSub: { fontSize: FONT_SIZE.md, color: COLORS.textSecondary, textAlign: 'center', marginTop: -6, marginBottom: SPACING.sm },
   input: {
     width: '100%',
-    minHeight: 56,
+    minHeight: 60,
     borderRadius: RADIUS.lg,
     backgroundColor: COLORS.card,
     borderWidth: 1.5,
     borderColor: COLORS.border,
-    paddingHorizontal: SPACING.md,
+    paddingHorizontal: SPACING.md + 4,
     fontSize: FONT_SIZE.lg,
     color: COLORS.text,
-    fontWeight: FONT_WEIGHT.medium,
+    fontWeight: FONT_WEIGHT.semibold,
+    ...SHADOW.sm,
   },
-  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center' },
-  pillColumn: { width: '100%', gap: SPACING.sm },
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm + 4, justifyContent: 'center' },
+  pillColumn: { width: '100%', gap: SPACING.sm + 2 },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1.5,
+    gap: 10,
+    paddingVertical: 16,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.lg,
+    borderWidth: 2,
     borderColor: COLORS.border,
     backgroundColor: COLORS.card,
-    minWidth: 100,
+    minWidth: 130,
     justifyContent: 'center',
+    ...SHADOW.sm,
   },
   pillSelected: { borderColor: COLORS.primary, backgroundColor: COLORS.primaryLight },
-  pillText: { fontSize: FONT_SIZE.md, color: COLORS.textSecondary, fontWeight: FONT_WEIGHT.medium },
-  pillTextSelected: { color: COLORS.primary, fontWeight: FONT_WEIGHT.semibold },
+  pillText: { fontSize: FONT_SIZE.md, color: COLORS.textSecondary, fontWeight: FONT_WEIGHT.semibold },
+  pillTextSelected: { color: COLORS.primary, fontWeight: FONT_WEIGHT.heavy },
   inputRow: { flexDirection: 'row', gap: SPACING.sm, width: '100%' },
-  unitToggle: { flexDirection: 'row', borderRadius: RADIUS.lg, overflow: 'hidden', borderWidth: 1.5, borderColor: COLORS.border },
-  unitBtn: { paddingHorizontal: 16, paddingVertical: 14, backgroundColor: COLORS.card },
+  unitToggle: {
+    flexDirection: 'row', borderRadius: RADIUS.lg, overflow: 'hidden', padding: 4,
+    backgroundColor: COLORS.gray100, gap: 4,
+  },
+  unitBtn: { paddingHorizontal: 16, justifyContent: 'center', borderRadius: RADIUS.md },
   unitBtnActive: { backgroundColor: COLORS.primary },
-  unitText: { fontSize: FONT_SIZE.md, color: COLORS.textSecondary, fontWeight: FONT_WEIGHT.medium },
-  unitTextActive: { color: COLORS.white, fontWeight: FONT_WEIGHT.semibold },
+  unitText: { fontSize: FONT_SIZE.md, color: COLORS.textSecondary, fontWeight: FONT_WEIGHT.semibold },
+  unitTextActive: { color: COLORS.white, fontWeight: FONT_WEIGHT.bold },
   cta: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.xl,
-    paddingVertical: 18,
-    gap: 8,
+    justifyContent: 'space-between',
+    borderRadius: RADIUS.full,
+    paddingVertical: 8,
+    paddingLeft: SPACING.lg,
+    paddingRight: 8,
+    minHeight: 60,
     marginTop: SPACING.md,
-    ...SHADOW.md,
+    ...SHADOW.lg,
   },
-  ctaDisabled: { opacity: 0.5 },
-  ctaText: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: COLORS.white },
+  ctaArrow: {
+    width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.25)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  ctaDisabled: { opacity: 0.45 },
+  ctaText: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white },
 });

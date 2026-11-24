@@ -9,7 +9,8 @@ import * as Haptics from 'expo-haptics';
 
 import { useBabyStore } from '../store/useBabyStore';
 import { useGrowthStore } from '../store/useGrowthStore';
-import { COLORS, DARK_COLORS } from '../constants/colors';
+import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
+import GradientView from '../components/GradientView';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
 import { formatDateFull, formatRelative, parsePositiveNumber } from '../utils/formatters';
 
@@ -23,7 +24,7 @@ function MiniChart({ series, color, C }) {
   const range = max - min || 1;
 
   return (
-    <View style={{ width: 200, height: 76 }}>
+    <View style={styles.chartWrap}>
       <View style={styles.chartBars}>
         {values.map((v, i) => (
           <View
@@ -32,7 +33,7 @@ function MiniChart({ series, color, C }) {
           />
         ))}
       </View>
-      <Text style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>
+      <Text style={[styles.chartRange, { color: C.textMuted }]}>
         {formatDateFull(recent[0].date)} → {formatDateFull(recent[recent.length - 1].date)}
       </Text>
     </View>
@@ -76,11 +77,17 @@ function AddMeasurementModal({ visible, onClose, onSave, C, defaultUnit }) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={[styles.modal, { backgroundColor: C.background }]}>
-        <View style={styles.modalHandle} />
+        <View style={[styles.modalHandle, { backgroundColor: C.border }]} />
         <View style={styles.modalHeader}>
-          <Text style={[styles.modalTitle, { color: C.text }]}>Add Measurement</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="close" size={24} color={C.textSecondary} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.modalTitle, { color: C.text }]}>Add Measurement</Text>
+          </View>
+          <TouchableOpacity
+            onPress={onClose}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            style={[styles.closeBtn, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}
+          >
+            <Ionicons name="close" size={22} color={C.textSecondary} />
           </TouchableOpacity>
         </View>
 
@@ -96,12 +103,14 @@ function AddMeasurementModal({ visible, onClose, onSave, C, defaultUnit }) {
                 <TextInput
                   style={[styles.fieldInput, { color: C.text, backgroundColor: C.card, borderColor: C.border }]}
                   placeholder={field.placeholder}
-                  placeholderTextColor={COLORS.textMuted}
+                  placeholderTextColor={C.textMuted}
                   value={field.value}
                   onChangeText={field.onChange}
                   keyboardType="decimal-pad"
                 />
-                <Text style={[styles.fieldSuffix, { color: C.textSecondary }]}>{field.suffix}</Text>
+                <View style={[styles.suffixTile, { backgroundColor: C.growthLight }]}>
+                  <Text style={[styles.fieldSuffix, { color: COLORS.growth }]}>{field.suffix}</Text>
+                </View>
               </View>
             </View>
           ))}
@@ -113,28 +122,48 @@ function AddMeasurementModal({ visible, onClose, onSave, C, defaultUnit }) {
                 <TouchableOpacity
                   key={u}
                   onPress={() => setUnit(u)}
-                  style={[styles.unitBtn, { backgroundColor: C.card }, unit === u && styles.unitBtnActive]}
+                  style={[
+                    styles.unitBtn,
+                    unit === u
+                      ? { backgroundColor: C.growthLight, borderColor: COLORS.growth }
+                      : { backgroundColor: C.card, borderColor: C.border },
+                  ]}
                 >
-                  <Text style={[styles.unitText, { color: C.textSecondary }, unit === u && styles.unitTextActive]}>{u}</Text>
+                  <Text style={[styles.unitText, { color: unit === u ? COLORS.growth : C.textSecondary }, unit === u && styles.unitTextActive]}>{u}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
 
-          {error && <Text style={{ color: COLORS.error, fontSize: 13, marginBottom: 8 }}>{error}</Text>}
+          {error && <Text style={[styles.errorText, { color: COLORS.error }]}>{error}</Text>}
 
           <TouchableOpacity
             onPress={handleSave}
-            style={[styles.saveBtn, { backgroundColor: COLORS.growth }]}
+            activeOpacity={0.85}
+            style={styles.saveWrap}
             accessibilityRole="button"
             accessibilityLabel="Save measurement"
           >
-            <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
-            <Text style={styles.saveBtnText}>Save Measurement</Text>
+            <GradientView colors={GRADIENTS.growth} style={[styles.saveBtn, SHADOW.md]}>
+              <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
+              <Text style={styles.saveBtnText}>Save Measurement</Text>
+            </GradientView>
           </TouchableOpacity>
         </ScrollView>
       </View>
     </Modal>
+  );
+}
+
+function HeroChip({ icon, value, label }) {
+  return (
+    <View style={styles.heroChip}>
+      <Ionicons name={icon} size={16} color={COLORS.white} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.heroChipValue}>{value}</Text>
+        <Text style={styles.heroChipLabel} numberOfLines={1}>{label}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -176,81 +205,70 @@ export default function GrowthScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.screenHeader}>
-          <View style={[styles.headerIcon, { backgroundColor: C.growthLight }]}>
-            <Ionicons name="trending-up" size={24} color={COLORS.growth} />
-          </View>
-          <View>
-            <Text style={[styles.screenTitle, { color: C.text }]}>Growth</Text>
-            <Text style={[styles.screenSub, { color: C.textSecondary }]}>
-              {logs.length} measurement{logs.length !== 1 ? 's' : ''}
-            </Text>
-          </View>
+          <Text style={[styles.screenTitle, { color: C.text }]}>Growth</Text>
+          <Text style={[styles.screenSub, { color: C.textSecondary }]}>
+            {logs.length} measurement{logs.length !== 1 ? 's' : ''}
+          </Text>
         </View>
 
         {/* Current stats */}
         {latest && (
-          <View style={[styles.statsCard, { backgroundColor: C.card, borderColor: C.border }]}>
-            {latestWeight && (
-              <View style={styles.statRow}>
-                <View style={[styles.statBadge, { backgroundColor: C.growthLight }]}>
-                  <Ionicons name="scale-outline" size={18} color={COLORS.growth} />
+          <GradientView colors={GRADIENTS.growth} bubbles style={[styles.hero, SHADOW.lg]}>
+            {latestWeight ? (
+              <View style={styles.heroTop}>
+                <View style={styles.heroIcon}>
+                  <Ionicons name="scale-outline" size={22} color={COLORS.white} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.statLabel, { color: C.textSecondary }]}>Current Weight</Text>
-                  <Text style={[styles.statVal, { color: C.text }]}>
+                  <Text style={styles.heroLabel}>Current Weight</Text>
+                  <Text style={styles.heroValue}>
                     {parseFloat(latestWeight.weight).toFixed(2)} {latestWeight.unit || 'kg'}
                   </Text>
                 </View>
                 {gain && (
-                  <View style={[styles.gainBadge, { backgroundColor: gainUp ? COLORS.successLight : COLORS.errorLight }]}>
-                    <Ionicons name={gainUp ? 'arrow-up' : 'arrow-down'} size={12} color={gainUp ? COLORS.success : COLORS.error} />
-                    <Text style={[styles.gainText, { color: gainUp ? COLORS.success : COLORS.error }]}>
-                      {gainText}
-                    </Text>
+                  <View style={styles.gainBadge}>
+                    <Ionicons name={gainUp ? 'arrow-up' : 'arrow-down'} size={12} color={COLORS.white} />
+                    <Text style={styles.gainText}>{gainText}</Text>
                   </View>
                 )}
               </View>
-            )}
-            {latest.height && (
-              <>
-                <View style={[styles.divider, { backgroundColor: C.border }]} />
-                <View style={styles.statRow}>
-                  <View style={[styles.statBadge, { backgroundColor: C.growthLight }]}>
-                    <Ionicons name="resize-outline" size={18} color={COLORS.growth} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.statLabel, { color: C.textSecondary }]}>Height / Length</Text>
-                    <Text style={[styles.statVal, { color: C.text }]}>{latest.height} cm</Text>
-                  </View>
+            ) : (
+              <View style={styles.heroTop}>
+                <View style={styles.heroIcon}>
+                  <Ionicons name="trending-up" size={22} color={COLORS.white} />
                 </View>
-              </>
+                <Text style={[styles.heroLabel, { flex: 1 }]}>Latest measurement</Text>
+              </View>
             )}
-            {latest.headCirc && (
-              <>
-                <View style={[styles.divider, { backgroundColor: C.border }]} />
-                <View style={styles.statRow}>
-                  <View style={[styles.statBadge, { backgroundColor: C.growthLight }]}>
-                    <Ionicons name="ellipse-outline" size={18} color={COLORS.growth} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.statLabel, { color: C.textSecondary }]}>Head Circumference</Text>
-                    <Text style={[styles.statVal, { color: C.text }]}>{latest.headCirc} cm</Text>
-                  </View>
-                </View>
-              </>
+
+            {!!(latest.height || latest.headCirc) && (
+              <View style={styles.heroChips}>
+                {!!latest.height && (
+                  <HeroChip icon="resize-outline" value={`${latest.height} cm`} label="Height / Length" />
+                )}
+                {!!latest.headCirc && (
+                  <HeroChip icon="ellipse-outline" value={`${latest.headCirc} cm`} label="Head Circumference" />
+                )}
+              </View>
             )}
+
             {gain && (
-              <Text style={[styles.gainNote, { color: C.textMuted }]}>
+              <Text style={styles.gainNote}>
                 {gainText} since first weigh-in ({gain.daysDiff} days)
               </Text>
             )}
-          </View>
+          </GradientView>
         )}
 
         {/* Mini chart */}
         {series.length >= 2 && (
-          <View style={[styles.chartCard, { backgroundColor: C.card, borderColor: C.border }]}>
-            <Text style={[styles.chartTitle, { color: C.text }]}>Weight Trend</Text>
+          <View style={[styles.chartCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
+            <View style={styles.chartHead}>
+              <View style={[styles.tile, { backgroundColor: C.growthLight }]}>
+                <Ionicons name="stats-chart" size={18} color={COLORS.growth} />
+              </View>
+              <Text style={[styles.chartTitle, { color: C.text }]}>Weight Trend</Text>
+            </View>
             <MiniChart series={series} color={COLORS.growth} C={C} />
           </View>
         )}
@@ -258,23 +276,24 @@ export default function GrowthScreen() {
         {/* Add button */}
         <TouchableOpacity
           onPress={() => setShowAdd(true)}
-          style={[styles.addBtn, { backgroundColor: COLORS.growth }]}
+          activeOpacity={0.85}
+          style={styles.addWrap}
           accessibilityRole="button"
           accessibilityLabel="Add measurement"
         >
-          <Ionicons name="add-circle" size={22} color={COLORS.white} />
-          <Text style={styles.addBtnText}>Add Measurement</Text>
+          <GradientView colors={GRADIENTS.growth} style={[styles.addBtn, SHADOW.md]}>
+            <Ionicons name="add-circle" size={22} color={COLORS.white} />
+            <Text style={styles.addBtnText}>Add Measurement</Text>
+          </GradientView>
         </TouchableOpacity>
 
         {/* History */}
         {logs.length > 0 && (
           <>
-            <Text style={[styles.sectionLabel, { color: C.textSecondary, marginTop: SPACING.xl }]}>
-              HISTORY
-            </Text>
+            <Text style={[styles.sectionTitle, { color: C.text }]}>History</Text>
             {logs.map((log) => (
-              <View key={log.id} style={[styles.logItem, { backgroundColor: C.card, borderColor: C.border }]}>
-                <View style={[styles.logIcon, { backgroundColor: C.growthLight }]}>
+              <View key={log.id} style={[styles.logItem, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
+                <View style={[styles.tile, { backgroundColor: C.growthLight }]}>
                   <Ionicons name="trending-up" size={18} color={COLORS.growth} />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -293,8 +312,10 @@ export default function GrowthScreen() {
         )}
 
         {logs.length === 0 && (
-          <View style={styles.emptyWrap}>
-            <Ionicons name="trending-up-outline" size={48} color={COLORS.textMuted} />
+          <View style={[styles.emptyWrap, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
+            <View style={[styles.emptyIcon, { backgroundColor: C.growthLight }]}>
+              <Ionicons name="trending-up-outline" size={34} color={COLORS.growth} />
+            </View>
             <Text style={[styles.emptyTitle, { color: C.text }]}>No measurements yet</Text>
             <Text style={[styles.emptySub, { color: C.textSecondary }]}>
               Tap "Add Measurement" to start tracking growth
@@ -317,65 +338,110 @@ export default function GrowthScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { paddingHorizontal: SPACING.lg },
-  screenHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.xl },
-  headerIcon: { width: 52, height: 52, borderRadius: RADIUS.lg, alignItems: 'center', justifyContent: 'center' },
-  screenTitle: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold },
-  screenSub: { fontSize: FONT_SIZE.sm },
-  sectionLabel: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, letterSpacing: 1, marginBottom: SPACING.sm },
+  screenHeader: { marginBottom: SPACING.lg },
+  screenTitle: { fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.8 },
+  screenSub: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
+  sectionTitle: {
+    fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3,
+    marginTop: SPACING.lg, marginBottom: SPACING.md,
+  },
 
-  statsCard: { borderRadius: RADIUS.xl, borderWidth: 1, marginBottom: SPACING.md, overflow: 'hidden' },
-  statRow: { flexDirection: 'row', alignItems: 'center', padding: SPACING.md, gap: SPACING.md },
-  statBadge: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  statLabel: { fontSize: FONT_SIZE.sm, marginBottom: 2 },
-  statVal: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold },
-  divider: { height: 1 },
-  gainBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: RADIUS.full },
-  gainText: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold },
-  gainNote: { textAlign: 'center', fontSize: FONT_SIZE.sm, padding: SPACING.sm, paddingTop: 0 },
+  // Hero
+  hero: { borderRadius: RADIUS.xxl, padding: SPACING.lg, marginBottom: SPACING.lg },
+  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  heroIcon: {
+    width: 44, height: 44, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  heroLabel: { color: 'rgba(255,255,255,0.9)', fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold },
+  heroValue: { color: COLORS.white, fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  gainBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  gainText: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white },
+  heroChips: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
+  heroChip: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 12, paddingHorizontal: 12,
+    borderRadius: RADIUS.lg, backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  heroChipValue: { color: COLORS.white, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.heavy },
+  heroChipLabel: { color: 'rgba(255,255,255,0.85)', fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, marginTop: 1 },
+  gainNote: {
+    color: 'rgba(255,255,255,0.88)', fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium,
+    textAlign: 'center', marginTop: SPACING.md,
+  },
 
-  chartCard: { borderRadius: RADIUS.xl, borderWidth: 1, padding: SPACING.md, marginBottom: SPACING.md, alignItems: 'center' },
-  chartTitle: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold, alignSelf: 'flex-start', marginBottom: SPACING.sm },
-  chartBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, height: 60 },
-  chartBar: { flex: 1, borderRadius: 4 },
+  // Chart
+  chartCard: { borderRadius: RADIUS.xl, borderWidth: 1, padding: SPACING.md, marginBottom: SPACING.md },
+  chartHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: SPACING.md },
+  chartTitle: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
+  chartWrap: { width: '100%', minHeight: 76 },
+  chartBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 60 },
+  chartBar: { flex: 1, borderRadius: 6 },
+  chartRange: { fontSize: FONT_SIZE.xs, marginTop: 6 },
 
+  tile: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+
+  addWrap: { marginBottom: SPACING.md },
   addBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    padding: 18, borderRadius: RADIUS.xl, gap: 8, marginBottom: SPACING.md, ...SHADOW.md,
+    padding: 18, borderRadius: RADIUS.xl, gap: 8,
   },
-  addBtnText: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: COLORS.white },
+  addBtnText: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white },
 
-  logItem: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, padding: SPACING.md, borderRadius: RADIUS.lg, borderWidth: 1, marginBottom: SPACING.sm },
-  logIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  logTitle: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold },
+  logItem: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
+    padding: 14, borderRadius: RADIUS.xl, borderWidth: 1, marginBottom: SPACING.sm,
+  },
+  logTitle: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
   logSub: { fontSize: FONT_SIZE.sm, marginTop: 2 },
 
-  emptyWrap: { alignItems: 'center', paddingVertical: SPACING.xxl, gap: SPACING.md },
-  emptyTitle: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.semibold },
+  emptyWrap: {
+    alignItems: 'center', paddingVertical: SPACING.xl, paddingHorizontal: SPACING.lg,
+    gap: SPACING.sm, borderRadius: RADIUS.xl, borderWidth: 1, marginTop: SPACING.md,
+  },
+  emptyIcon: {
+    width: 72, height: 72, borderRadius: 24, marginBottom: SPACING.sm,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  emptyTitle: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
   emptySub: { fontSize: FONT_SIZE.md, textAlign: 'center' },
 
   // Modal
   modal: { flex: 1, paddingHorizontal: SPACING.lg },
-  modalHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: COLORS.gray200, alignSelf: 'center', marginTop: 12, marginBottom: 8 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACING.md },
-  modalTitle: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold },
+  modalHandle: { width: 40, height: 5, borderRadius: 3, alignSelf: 'center', marginTop: 12, marginBottom: 8 },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: SPACING.md },
+  modalTitle: { fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.8 },
+  closeBtn: {
+    width: 42, height: 42, borderRadius: 14, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
   modalContent: { paddingBottom: 40, gap: SPACING.md },
   fieldWrap: { gap: 8 },
-  fieldLabel: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium, letterSpacing: 0.5 },
+  fieldLabel: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, letterSpacing: 0.2 },
   fieldRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   fieldInput: {
-    flex: 1, height: 52, borderRadius: RADIUS.lg, borderWidth: 1.5,
-    paddingHorizontal: SPACING.md, fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.medium,
+    flex: 1, height: 54, borderRadius: RADIUS.lg, borderWidth: 1.5,
+    paddingHorizontal: SPACING.md, fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.semibold,
   },
-  fieldSuffix: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.medium, width: 36 },
+  suffixTile: {
+    width: 54, height: 54, borderRadius: RADIUS.lg,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  fieldSuffix: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.heavy },
   unitRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  unitToggle: { flexDirection: 'row', borderRadius: RADIUS.lg, overflow: 'hidden', borderWidth: 1.5, borderColor: COLORS.border },
-  unitBtn: { paddingHorizontal: 20, paddingVertical: 12, backgroundColor: COLORS.card },
-  unitBtnActive: { backgroundColor: COLORS.growth },
-  unitText: { fontSize: FONT_SIZE.md, color: COLORS.textSecondary, fontWeight: FONT_WEIGHT.medium },
-  unitTextActive: { color: COLORS.white, fontWeight: FONT_WEIGHT.semibold },
+  unitToggle: { flexDirection: 'row', gap: SPACING.sm },
+  unitBtn: { paddingHorizontal: 22, paddingVertical: 11, borderRadius: RADIUS.md, borderWidth: 1.5 },
+  unitText: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.medium },
+  unitTextActive: { fontWeight: FONT_WEIGHT.heavy },
+  errorText: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, marginBottom: 8 },
+  saveWrap: { marginTop: SPACING.md },
   saveBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    padding: 18, borderRadius: RADIUS.xl, gap: 8, marginTop: SPACING.md, ...SHADOW.md,
+    padding: 18, borderRadius: RADIUS.xl, gap: 8,
   },
-  saveBtnText: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold, color: COLORS.white },
+  saveBtnText: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white },
 });
