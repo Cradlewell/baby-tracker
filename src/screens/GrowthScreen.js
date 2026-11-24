@@ -9,13 +9,16 @@ import * as Haptics from 'expo-haptics';
 
 import { useBabyStore } from '../store/useBabyStore';
 import { useGrowthStore } from '../store/useGrowthStore';
-import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
-import GradientView from '../components/GradientView';
-import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
+import { COLORS } from '../constants/colors';
+import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING } from '../constants/theme';
 import { formatDateFull, formatRelative, parsePositiveNumber } from '../utils/formatters';
 
+// Local palette for this screen, taken from the user's approved screenshot.
+const SHOT_LIGHT = { blue: '#006BFD', blueText: '#0058D4', tile: '#DAE9FE', hero: '#EBF3FE', card: '#EEF4FE', surface: '#FFFFFF', text: '#032049', textSecondary: '#5A6690', border: '#E1EAFB', background: '#FBFBFE' };
+const SHOT_DARK = { blue: '#006BFD', blueText: '#7FB0FF', tile: '#1C2D52', hero: '#16223D', card: '#131D33', surface: '#1A2540', text: '#EEF3FF', textSecondary: '#A9B6D6', border: '#26324F', background: '#0B1220' };
+
 // `series` is oldest → newest, every weight already converted to kg.
-function MiniChart({ series, color, C }) {
+function MiniChart({ series, color, S }) {
   const recent = series.slice(-8); // the 8 most recent weigh-ins, left = oldest
   if (recent.length < 2) return null;
   const values = recent.map((p) => p.kg);
@@ -33,7 +36,7 @@ function MiniChart({ series, color, C }) {
           />
         ))}
       </View>
-      <Text style={[styles.chartRange, { color: C.textMuted }]}>
+      <Text style={[styles.chartRange, { color: S.textSecondary }]}>
         {formatDateFull(recent[0].date)} → {formatDateFull(recent[recent.length - 1].date)}
       </Text>
     </View>
@@ -48,7 +51,7 @@ const LIMITS = {
   headCirc: [20, 60],
 };
 
-function AddMeasurementModal({ visible, onClose, onSave, C, defaultUnit }) {
+function AddMeasurementModal({ visible, onClose, onSave, S, defaultUnit }) {
   const [weight, setWeight] = useState('');
   const [height, setHeight] = useState('');
   const [headCirc, setHeadCirc] = useState('');
@@ -76,18 +79,18 @@ function AddMeasurementModal({ visible, onClose, onSave, C, defaultUnit }) {
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={[styles.modal, { backgroundColor: C.background }]}>
-        <View style={[styles.modalHandle, { backgroundColor: C.border }]} />
+      <View style={[styles.modal, { backgroundColor: S.background }]}>
+        <View style={[styles.modalHandle, { backgroundColor: S.border }]} />
         <View style={styles.modalHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.modalTitle, { color: C.text }]}>Add Measurement</Text>
+            <Text style={[styles.modalTitle, { color: S.text }]}>Add Measurement</Text>
           </View>
           <TouchableOpacity
             onPress={onClose}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            style={[styles.closeBtn, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={[styles.headerBtn, { backgroundColor: S.tile }]}
           >
-            <Ionicons name="close" size={22} color={C.textSecondary} />
+            <Ionicons name="close" size={24} color={S.text} />
           </TouchableOpacity>
         </View>
 
@@ -98,25 +101,25 @@ function AddMeasurementModal({ visible, onClose, onSave, C, defaultUnit }) {
             { label: 'Head Circumference (cm)', value: headCirc, onChange: setHeadCirc, placeholder: 'e.g. 38', suffix: 'cm' },
           ].map((field) => (
             <View key={field.label} style={styles.fieldWrap}>
-              <Text style={[styles.fieldLabel, { color: C.textSecondary }]}>{field.label}</Text>
+              <Text style={[styles.fieldLabel, { color: S.textSecondary }]}>{field.label}</Text>
               <View style={styles.fieldRow}>
                 <TextInput
-                  style={[styles.fieldInput, { color: C.text, backgroundColor: C.card, borderColor: C.border }]}
+                  style={[styles.fieldInput, { color: S.text, backgroundColor: S.surface, borderColor: S.border }]}
                   placeholder={field.placeholder}
-                  placeholderTextColor={C.textMuted}
+                  placeholderTextColor={S.textSecondary}
                   value={field.value}
                   onChangeText={field.onChange}
                   keyboardType="decimal-pad"
                 />
-                <View style={[styles.suffixTile, { backgroundColor: C.growthLight }]}>
-                  <Text style={[styles.fieldSuffix, { color: COLORS.growth }]}>{field.suffix}</Text>
+                <View style={[styles.suffixTile, { backgroundColor: S.tile }]}>
+                  <Text style={[styles.fieldSuffix, { color: S.text }]}>{field.suffix}</Text>
                 </View>
               </View>
             </View>
           ))}
 
           <View style={styles.unitRow}>
-            <Text style={[styles.fieldLabel, { color: C.textSecondary }]}>Weight unit</Text>
+            <Text style={[styles.fieldLabel, { color: S.textSecondary }]}>Weight unit</Text>
             <View style={styles.unitToggle}>
               {['kg', 'lbs'].map((u) => (
                 <TouchableOpacity
@@ -125,11 +128,12 @@ function AddMeasurementModal({ visible, onClose, onSave, C, defaultUnit }) {
                   style={[
                     styles.unitBtn,
                     unit === u
-                      ? { backgroundColor: C.growthLight, borderColor: COLORS.growth }
-                      : { backgroundColor: C.card, borderColor: C.border },
+                      ? { backgroundColor: S.tile, borderColor: S.blue, borderWidth: 1.5 }
+                      : { backgroundColor: S.surface, borderColor: S.border },
                   ]}
                 >
-                  <Text style={[styles.unitText, { color: unit === u ? COLORS.growth : C.textSecondary }, unit === u && styles.unitTextActive]}>{u}</Text>
+                  {unit === u ? <Ionicons name="checkmark-circle" size={18} color={S.blue} /> : null}
+                  <Text style={[styles.unitText, { color: unit === u ? S.blueText : S.text }, unit === u && styles.unitTextActive]}>{u}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -140,14 +144,12 @@ function AddMeasurementModal({ visible, onClose, onSave, C, defaultUnit }) {
           <TouchableOpacity
             onPress={handleSave}
             activeOpacity={0.85}
-            style={styles.saveWrap}
+            style={[styles.saveWrap, styles.saveBtn, { backgroundColor: S.blue }]}
             accessibilityRole="button"
             accessibilityLabel="Save measurement"
           >
-            <GradientView colors={GRADIENTS.growth} style={[styles.saveBtn, SHADOW.md]}>
-              <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
-              <Text style={styles.saveBtnText}>Save Measurement</Text>
-            </GradientView>
+            <Ionicons name="checkmark-circle-outline" size={24} color={COLORS.white} />
+            <Text style={styles.saveBtnText}>Save Measurement</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -155,23 +157,23 @@ function AddMeasurementModal({ visible, onClose, onSave, C, defaultUnit }) {
   );
 }
 
-function HeroChip({ icon, value, label }) {
+function HeroChip({ icon, value, label, S }) {
   return (
-    <View style={styles.heroChip}>
-      <Ionicons name={icon} size={16} color={COLORS.white} />
+    <View style={[styles.heroChip, { backgroundColor: S.surface, borderColor: S.border }]}>
+      <Ionicons name={icon} size={22} color={S.blue} />
       <View style={{ flex: 1 }}>
-        <Text style={styles.heroChipValue}>{value}</Text>
-        <Text style={styles.heroChipLabel} numberOfLines={1}>{label}</Text>
+        <Text style={[styles.heroChipValue, { color: S.text }]}>{value}</Text>
+        <Text style={[styles.heroChipLabel, { color: S.textSecondary }]} numberOfLines={1}>{label}</Text>
       </View>
     </View>
   );
 }
 
-export default function GrowthScreen() {
+export default function GrowthScreen({ navigation }) {
   const { getActiveBaby, darkMode } = useBabyStore();
   const baby = getActiveBaby();
   const babyId = baby?.id;
-  const C = darkMode ? DARK_COLORS : COLORS;
+  const S = darkMode ? SHOT_DARK : SHOT_LIGHT;
   const insets = useSafeAreaInsets();
 
   const { load, addEntry, getLogs, getLatest, getWeightGain, getWeightSeriesKg } = useGrowthStore();
@@ -196,7 +198,7 @@ export default function GrowthScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: C.background }]}>
+    <View style={[styles.container, { backgroundColor: S.background }]}>
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
@@ -204,72 +206,92 @@ export default function GrowthScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.screenHeader}>
-          <Text style={[styles.screenTitle, { color: C.text }]}>Growth</Text>
-          <Text style={[styles.screenSub, { color: C.textSecondary }]}>
-            {logs.length} measurement{logs.length !== 1 ? 's' : ''}
-          </Text>
+        <View style={[styles.screenHeader, styles.headerRow]}>
+          {navigation?.canGoBack() ? (
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={[styles.headerBtn, { backgroundColor: S.tile }]}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="arrow-back" size={22} color={S.blue} />
+            </TouchableOpacity>
+          ) : null}
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.screenTitle, { color: S.text }]}>Growth</Text>
+            <Text style={[styles.screenSub, { color: S.textSecondary }]}>
+              {logs.length} measurement{logs.length !== 1 ? 's' : ''}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Settings')}
+            style={[styles.headerBtn, { backgroundColor: S.tile }]}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+          >
+            <Ionicons name="settings-outline" size={24} color={S.blue} />
+          </TouchableOpacity>
         </View>
 
         {/* Current stats */}
         {latest && (
-          <GradientView colors={GRADIENTS.growth} bubbles style={[styles.hero, SHADOW.lg]}>
+          <View style={[styles.hero, { backgroundColor: S.hero }]}>
             {latestWeight ? (
               <View style={styles.heroTop}>
-                <View style={styles.heroIcon}>
-                  <Ionicons name="scale-outline" size={22} color={COLORS.white} />
+                <View style={[styles.heroIcon, { backgroundColor: S.tile }]}>
+                  <Ionicons name="scale-outline" size={26} color={S.blue} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.heroLabel}>Current Weight</Text>
-                  <Text style={styles.heroValue}>
+                  <Text style={[styles.heroLabel, { color: S.textSecondary }]}>Current Weight</Text>
+                  <Text style={[styles.heroValue, { color: S.text }]}>
                     {parseFloat(latestWeight.weight).toFixed(2)} {latestWeight.unit || 'kg'}
                   </Text>
                 </View>
                 {gain && (
-                  <View style={styles.gainBadge}>
-                    <Ionicons name={gainUp ? 'arrow-up' : 'arrow-down'} size={12} color={COLORS.white} />
-                    <Text style={styles.gainText}>{gainText}</Text>
+                  <View style={[styles.gainBadge, { backgroundColor: S.surface, borderColor: S.border }]}>
+                    <Ionicons name={gainUp ? 'arrow-up' : 'arrow-down'} size={14} color={S.blue} />
+                    <Text style={[styles.gainText, { color: S.text }]}>{gainText}</Text>
                   </View>
                 )}
               </View>
             ) : (
               <View style={styles.heroTop}>
-                <View style={styles.heroIcon}>
-                  <Ionicons name="trending-up" size={22} color={COLORS.white} />
+                <View style={[styles.heroIcon, { backgroundColor: S.tile }]}>
+                  <Ionicons name="trending-up-outline" size={26} color={S.blue} />
                 </View>
-                <Text style={[styles.heroLabel, { flex: 1 }]}>Latest measurement</Text>
+                <Text style={[styles.heroLabel, { flex: 1, color: S.text }]}>Latest measurement</Text>
               </View>
             )}
 
             {!!(latest.height || latest.headCirc) && (
               <View style={styles.heroChips}>
                 {!!latest.height && (
-                  <HeroChip icon="resize-outline" value={`${latest.height} cm`} label="Height / Length" />
+                  <HeroChip icon="resize-outline" value={`${latest.height} cm`} label="Height / Length" S={S} />
                 )}
                 {!!latest.headCirc && (
-                  <HeroChip icon="ellipse-outline" value={`${latest.headCirc} cm`} label="Head Circumference" />
+                  <HeroChip icon="ellipse-outline" value={`${latest.headCirc} cm`} label="Head Circumference" S={S} />
                 )}
               </View>
             )}
 
             {gain && (
-              <Text style={styles.gainNote}>
+              <Text style={[styles.gainNote, { color: S.textSecondary }]}>
                 {gainText} since first weigh-in ({gain.daysDiff} days)
               </Text>
             )}
-          </GradientView>
+          </View>
         )}
 
         {/* Mini chart */}
         {series.length >= 2 && (
-          <View style={[styles.chartCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
+          <View style={[styles.chartCard, { backgroundColor: S.card }]}>
             <View style={styles.chartHead}>
-              <View style={[styles.tile, { backgroundColor: C.growthLight }]}>
-                <Ionicons name="stats-chart" size={18} color={COLORS.growth} />
+              <View style={[styles.tile, { backgroundColor: S.surface, borderColor: S.border }]}>
+                <Ionicons name="stats-chart-outline" size={22} color={S.blue} />
               </View>
-              <Text style={[styles.chartTitle, { color: C.text }]}>Weight Trend</Text>
+              <Text style={[styles.chartTitle, { color: S.text }]}>Weight Trend</Text>
             </View>
-            <MiniChart series={series} color={COLORS.growth} C={C} />
+            <MiniChart series={series} color={S.blue} S={S} />
           </View>
         )}
 
@@ -277,32 +299,30 @@ export default function GrowthScreen() {
         <TouchableOpacity
           onPress={() => setShowAdd(true)}
           activeOpacity={0.85}
-          style={styles.addWrap}
+          style={[styles.addWrap, styles.addBtn, { backgroundColor: S.blue }]}
           accessibilityRole="button"
           accessibilityLabel="Add measurement"
         >
-          <GradientView colors={GRADIENTS.growth} style={[styles.addBtn, SHADOW.md]}>
-            <Ionicons name="add-circle" size={22} color={COLORS.white} />
-            <Text style={styles.addBtnText}>Add Measurement</Text>
-          </GradientView>
+          <Ionicons name="add-circle-outline" size={24} color={COLORS.white} />
+          <Text style={styles.addBtnText}>Add Measurement</Text>
         </TouchableOpacity>
 
         {/* History */}
         {logs.length > 0 && (
           <>
-            <Text style={[styles.sectionTitle, { color: C.text }]}>History</Text>
+            <Text style={[styles.sectionTitle, { color: S.text }]}>History</Text>
             {logs.map((log) => (
-              <View key={log.id} style={[styles.logItem, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
-                <View style={[styles.tile, { backgroundColor: C.growthLight }]}>
-                  <Ionicons name="trending-up" size={18} color={COLORS.growth} />
+              <View key={log.id} style={[styles.logItem, { backgroundColor: S.card }]}>
+                <View style={[styles.tile, { backgroundColor: S.surface, borderColor: S.border }]}>
+                  <Ionicons name="trending-up-outline" size={24} color={S.text} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.logTitle, { color: C.text }]}>
+                  <Text style={[styles.logTitle, { color: S.text }]}>
                     {log.weight ? `${log.weight} ${log.unit || 'kg'}` : ''}
                     {log.height ? ` · ${log.height}cm` : ''}
                     {log.headCirc ? ` · HC ${log.headCirc}cm` : ''}
                   </Text>
-                  <Text style={[styles.logSub, { color: C.textSecondary }]}>
+                  <Text style={[styles.logSub, { color: S.text }]}>
                     {formatDateFull(log.date || log.createdAt)}
                   </Text>
                 </View>
@@ -312,12 +332,12 @@ export default function GrowthScreen() {
         )}
 
         {logs.length === 0 && (
-          <View style={[styles.emptyWrap, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
-            <View style={[styles.emptyIcon, { backgroundColor: C.growthLight }]}>
-              <Ionicons name="trending-up-outline" size={34} color={COLORS.growth} />
+          <View style={[styles.emptyWrap, { backgroundColor: S.hero }]}>
+            <View style={[styles.emptyIcon, { backgroundColor: S.tile }]}>
+              <Ionicons name="trending-up-outline" size={34} color={S.blue} />
             </View>
-            <Text style={[styles.emptyTitle, { color: C.text }]}>No measurements yet</Text>
-            <Text style={[styles.emptySub, { color: C.textSecondary }]}>
+            <Text style={[styles.emptyTitle, { color: S.text }]}>No measurements yet</Text>
+            <Text style={[styles.emptySub, { color: S.textSecondary }]}>
               Tap "Add Measurement" to start tracking growth
             </Text>
           </View>
@@ -328,7 +348,7 @@ export default function GrowthScreen() {
         visible={showAdd}
         onClose={() => setShowAdd(false)}
         onSave={handleSave}
-        C={C}
+        S={S}
         defaultUnit={latestWeight?.unit || baby?.weightUnit || 'kg'}
       />
     </View>
@@ -339,109 +359,109 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { paddingHorizontal: SPACING.lg },
   screenHeader: { marginBottom: SPACING.lg },
-  screenTitle: { fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.8 },
-  screenSub: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  headerBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  screenTitle: { fontSize: 28, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  screenSub: { fontSize: 15, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
   sectionTitle: {
-    fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3,
-    marginTop: SPACING.lg, marginBottom: SPACING.md,
+    fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3,
+    marginTop: SPACING.lg, marginBottom: 12,
   },
 
   // Hero
-  hero: { borderRadius: RADIUS.xxl, padding: SPACING.lg, marginBottom: SPACING.lg },
-  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  hero: { borderRadius: 28, padding: 20, marginBottom: SPACING.lg },
+  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   heroIcon: {
-    width: 44, height: 44, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.22)',
+    width: 56, height: 56, borderRadius: 16,
     alignItems: 'center', justifyContent: 'center',
   },
-  heroLabel: { color: 'rgba(255,255,255,0.9)', fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold },
-  heroValue: { color: COLORS.white, fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  heroLabel: { fontSize: 15, fontWeight: FONT_WEIGHT.semibold },
+  heroValue: { fontSize: 28, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
   gainBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: RADIUS.full,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.full,
   },
-  gainText: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white },
+  gainText: { fontSize: 14, fontWeight: FONT_WEIGHT.heavy },
   heroChips: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
   heroChip: {
     flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingVertical: 12, paddingHorizontal: 12,
-    borderRadius: RADIUS.lg, backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 20, borderWidth: 1,
   },
-  heroChipValue: { color: COLORS.white, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.heavy },
-  heroChipLabel: { color: 'rgba(255,255,255,0.85)', fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, marginTop: 1 },
+  heroChipValue: { fontSize: 17, fontWeight: FONT_WEIGHT.heavy },
+  heroChipLabel: { fontSize: 13, fontWeight: FONT_WEIGHT.semibold, marginTop: 1 },
   gainNote: {
-    color: 'rgba(255,255,255,0.88)', fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium,
+    fontSize: 15, fontWeight: FONT_WEIGHT.medium,
     textAlign: 'center', marginTop: SPACING.md,
   },
 
   // Chart
-  chartCard: { borderRadius: RADIUS.xl, borderWidth: 1, padding: SPACING.md, marginBottom: SPACING.md },
+  chartCard: { borderRadius: 24, padding: 20, marginBottom: SPACING.md },
   chartHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: SPACING.md },
-  chartTitle: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
+  chartTitle: { fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
   chartWrap: { width: '100%', minHeight: 76 },
   chartBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 60 },
   chartBar: { flex: 1, borderRadius: 6 },
-  chartRange: { fontSize: FONT_SIZE.xs, marginTop: 6 },
+  chartRange: { fontSize: 13, marginTop: 6 },
 
-  tile: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  tile: { width: 48, height: 48, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
 
   addWrap: { marginBottom: SPACING.md },
   addBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    padding: 18, borderRadius: RADIUS.xl, gap: 8,
+    minHeight: 56, paddingHorizontal: SPACING.lg, borderRadius: RADIUS.full, gap: 10,
   },
-  addBtnText: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white },
+  addBtnText: { fontSize: 18, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.2 },
 
   logItem: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
-    padding: 14, borderRadius: RADIUS.xl, borderWidth: 1, marginBottom: SPACING.sm,
+    flexDirection: 'row', alignItems: 'center', gap: 16,
+    padding: 16, borderRadius: 20, marginBottom: 10,
   },
-  logTitle: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
-  logSub: { fontSize: FONT_SIZE.sm, marginTop: 2 },
+  logTitle: { fontSize: 17, fontWeight: FONT_WEIGHT.bold },
+  logSub: { fontSize: 15, marginTop: 2 },
 
   emptyWrap: {
     alignItems: 'center', paddingVertical: SPACING.xl, paddingHorizontal: SPACING.lg,
-    gap: SPACING.sm, borderRadius: RADIUS.xl, borderWidth: 1, marginTop: SPACING.md,
+    gap: SPACING.sm, borderRadius: 28, marginTop: SPACING.md,
   },
   emptyIcon: {
     width: 72, height: 72, borderRadius: 24, marginBottom: SPACING.sm,
     alignItems: 'center', justifyContent: 'center',
   },
-  emptyTitle: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
-  emptySub: { fontSize: FONT_SIZE.md, textAlign: 'center' },
+  emptyTitle: { fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
+  emptySub: { fontSize: 15, textAlign: 'center' },
 
   // Modal
   modal: { flex: 1, paddingHorizontal: SPACING.lg },
   modalHandle: { width: 40, height: 5, borderRadius: 3, alignSelf: 'center', marginTop: 12, marginBottom: 8 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: SPACING.md },
-  modalTitle: { fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.8 },
-  closeBtn: {
-    width: 42, height: 42, borderRadius: 14, borderWidth: 1,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  modalTitle: { fontSize: 28, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
   modalContent: { paddingBottom: 40, gap: SPACING.md },
   fieldWrap: { gap: 8 },
-  fieldLabel: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, letterSpacing: 0.2 },
+  fieldLabel: { fontSize: 15, fontWeight: FONT_WEIGHT.bold, letterSpacing: 0.2 },
   fieldRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   fieldInput: {
-    flex: 1, height: 54, borderRadius: RADIUS.lg, borderWidth: 1.5,
+    flex: 1, minHeight: 56, borderRadius: 16, borderWidth: 1.5,
     paddingHorizontal: SPACING.md, fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.semibold,
   },
   suffixTile: {
-    width: 54, height: 54, borderRadius: RADIUS.lg,
+    width: 56, height: 56, borderRadius: 16,
     alignItems: 'center', justifyContent: 'center',
   },
-  fieldSuffix: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.heavy },
+  fieldSuffix: { fontSize: 15, fontWeight: FONT_WEIGHT.heavy },
   unitRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   unitToggle: { flexDirection: 'row', gap: SPACING.sm },
-  unitBtn: { paddingHorizontal: 22, paddingVertical: 11, borderRadius: RADIUS.md, borderWidth: 1.5 },
-  unitText: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.medium },
+  unitBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 20, minHeight: 48, borderRadius: RADIUS.full, borderWidth: 1,
+  },
+  unitText: { fontSize: 16, fontWeight: FONT_WEIGHT.medium },
   unitTextActive: { fontWeight: FONT_WEIGHT.heavy },
   errorText: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, marginBottom: 8 },
   saveWrap: { marginTop: SPACING.md },
   saveBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    padding: 18, borderRadius: RADIUS.xl, gap: 8,
+    minHeight: 56, paddingHorizontal: SPACING.lg, borderRadius: RADIUS.full, gap: 10,
   },
-  saveBtnText: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white },
+  saveBtnText: { fontSize: 18, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.2 },
 });

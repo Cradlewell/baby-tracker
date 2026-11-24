@@ -5,7 +5,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { deleteBabyAndData, clearAllData } from '../lib/dataReset';
+import { deleteBabyAndData } from '../lib/dataReset';
+import { logout } from '../lib/session';
+import { openSwitchClient } from '../lib/switchClientFlow';
+import { hasPendingChanges } from '../lib/storage';
+import { useAuthStore } from '../store/useAuthStore';
 
 import { useBabyStore } from '../store/useBabyStore';
 import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
@@ -22,9 +26,9 @@ function SettingRow({ icon, color, gradient, tileBg, label, labelColor, sub, rig
       accessibilityLabel={label}
     >
       {gradient ? (
-        <GradientView colors={gradient} style={styles.rowIcon}>
-          <Ionicons name={icon} size={20} color={COLORS.white} />
-        </GradientView>
+        <View style={[styles.rowIcon, { backgroundColor: C.primaryLight }]}>
+          <Ionicons name={icon.endsWith('-outline') ? icon : `${icon}-outline`} size={22} color={C.primary} />
+        </View>
       ) : (
         <View style={[styles.rowIcon, { backgroundColor: tileBg || C.border }]}>
           <Ionicons name={icon} size={20} color={color || C.textSecondary} />
@@ -47,11 +51,46 @@ export default function SettingsScreen({ navigation }) {
   const C = darkMode ? DARK_COLORS : COLORS;
   const insets = useSafeAreaInsets();
   const errorTint = darkMode ? COLORS.error + '22' : COLORS.errorLight;
+  const user = useAuthStore((s) => s.user);
+  const client = useAuthStore((s) => s.client);
+  const clientName = client?.name || 'this client';
+
+  // Changes saved offline and not yet sent would be lost when leaving the client.
+  const confirmLeave = async (title, message, actionLabel, action, nextRoute) => {
+    const pending = await hasPendingChanges().catch(() => false);
+    Alert.alert(
+      title,
+      pending
+        ? `${message}\n\nSome changes made offline have not been uploaded yet and will be lost. Connect to the internet first to keep them.`
+        : message,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: actionLabel,
+          style: 'destructive',
+          onPress: async () => {
+            await action();
+            navigation.reset({ index: 0, routes: [{ name: nextRoute }] });
+          },
+        },
+      ]
+    );
+  };
+
+  const handleLogout = () => confirmLeave(
+    'Log out?',
+    "You will need your email, password and the client's verification code to sign in again.",
+    'Log out',
+    logout,
+    'Login'
+  );
+
+  const handleSwitchClient = () => openSwitchClient(navigation);
 
   const handleExport = () => {
     Alert.alert(
       'Export Data',
-      'All data is stored only on this device — nothing is uploaded. An export feature is coming in a future update.',
+      `Records for ${clientName} are stored securely on the Cradlewell server and cached on this device. An export feature is coming in a future update.`,
       [{ text: 'OK' }]
     );
   };
@@ -99,25 +138,6 @@ export default function SettingsScreen({ navigation }) {
     );
   };
 
-  const handleClearData = () => {
-    Alert.alert(
-      'Clear All Data',
-      'This will permanently delete every baby profile and all tracking data on this device. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            await clearAllData();
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
-          },
-        },
-      ]
-    );
-  };
-
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
       <ScrollView
@@ -142,7 +162,7 @@ export default function SettingsScreen({ navigation }) {
         </View>
 
         {/* App card */}
-        <GradientView colors={GRADIENTS.brand} bubbles style={[styles.appCard, SHADOW.lg]}>
+        <GradientView colors={GRADIENTS.brand} style={[styles.appCard, SHADOW.lg]}>
           <View style={styles.appIcon}>
             <Ionicons name="heart" size={24} color={COLORS.primary} />
           </View>
@@ -153,8 +173,8 @@ export default function SettingsScreen({ navigation }) {
             </Text>
           </View>
           <View style={styles.appChip}>
-            <Ionicons name="lock-closed" size={12} color={COLORS.white} />
-            <Text style={styles.appChipText}>On-device</Text>
+            <Ionicons name="cloud-done" size={12} color={COLORS.white} />
+            <Text style={styles.appChipText}>Synced</Text>
           </View>
         </GradientView>
 
@@ -247,7 +267,7 @@ export default function SettingsScreen({ navigation }) {
               icon="download-outline"
               gradient={GRADIENTS.growth}
               label="Export Data"
-              sub="Coming soon · data stays on this device"
+              sub="Coming soon"
               onPress={handleExport}
               right={<Ionicons name="chevron-forward" size={16} color={C.textMuted} />}
             />
@@ -263,19 +283,50 @@ export default function SettingsScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Danger zone */}
+        {/* Account */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: COLORS.error }]}>DANGER ZONE</Text>
-          <View style={[styles.groupCard, { backgroundColor: C.card, borderColor: COLORS.error + '40' }, SHADOW.sm]}>
+          <Text style={[styles.sectionTitle, { color: C.textSecondary }]}>ACCOUNT</Text>
+          <View style={[styles.groupCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
             <SettingRow
               C={C}
-              icon="trash-outline"
+              icon="person"
+              gradient={GRADIENTS.brandDeep}
+              label={user?.fullName || 'Signed in'}
+              sub={user?.email}
+            />
+            <View style={[styles.divider, { backgroundColor: C.border }]} />
+            <SettingRow
+              C={C}
+              icon="people"
+              gradient={GRADIENTS.medicine}
+              label={client?.name || 'Client'}
+              sub={user?.role === 'client'
+                ? `Your records${client?.phoneMasked ? ` · ${client.phoneMasked}` : ''}`
+                : client?.phoneMasked ? `Verified client · ${client.phoneMasked}` : 'Verified client'}
+            />
+            {user?.role === 'client' ? null : (
+              <>
+                <View style={[styles.divider, { backgroundColor: C.border }]} />
+                <SettingRow
+                  C={C}
+                  icon="swap-horizontal"
+                  gradient={GRADIENTS.growth}
+                  label="Switch Client"
+                  sub="Open another client's records"
+                  onPress={handleSwitchClient}
+                  right={<Ionicons name="chevron-forward" size={16} color={C.textMuted} />}
+                />
+              </>
+            )}
+            <View style={[styles.divider, { backgroundColor: C.border }]} />
+            <SettingRow
+              C={C}
+              icon="log-out-outline"
               color={COLORS.error}
               tileBg={errorTint}
-              label="Clear All Data"
+              label="Log Out"
               labelColor={COLORS.error}
-              sub="Permanently delete everything"
-              onPress={handleClearData}
+              onPress={handleLogout}
               right={<Ionicons name="chevron-forward" size={16} color={COLORS.error} />}
             />
           </View>

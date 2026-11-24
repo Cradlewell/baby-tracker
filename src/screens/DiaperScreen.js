@@ -3,24 +3,30 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
 import { useBabyStore } from '../store/useBabyStore';
-import { useDiaperStore } from '../store/useDiaperStore';
-import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
-import GradientView from '../components/GradientView';
-import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
+import { useDiaperStore, URINE_COLORS, STOOL_COLORS, findColor } from '../store/useDiaperStore';
+import { COLORS } from '../constants/colors';
+import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING } from '../constants/theme';
 
-// Stool keeps its own olive-green hue (no matching token) so the three types stay
-// distinguishable; all tints are derived as `color + '22'` so they work in dark mode.
-const STOOL_COLOR = '#65A30D';
+// Local palette for this screen, taken from the user's approved screenshot.
+const SHOT_LIGHT = { blue: '#006BFD', blueText: '#0058D4', tile: '#DAE9FE', hero: '#EBF3FE', card: '#EEF4FE', surface: '#FFFFFF', text: '#032049', textSecondary: '#5A6690', border: '#E1EAFB', background: '#FBFBFE' };
+const SHOT_DARK = { blue: '#006BFD', blueText: '#7FB0FF', tile: '#1C2D52', hero: '#16223D', card: '#131D33', surface: '#1A2540', text: '#EEF3FF', textSecondary: '#A9B6D6', border: '#26324F', background: '#0B1220' };
+
+// All diaper types share the brand colour; they are told apart by icon and label.
 
 const EVENT_TYPES = [
-  { value: 'urine', label: 'Urine', emoji: '💧', color: COLORS.growth },
-  { value: 'stool', label: 'Stool', emoji: '💩', color: STOOL_COLOR },
-  { value: 'both',  label: 'Both',  emoji: '💧💩', color: COLORS.diaper },
+  { value: 'urine', label: 'Urine', icon: 'water-outline', color: COLORS.primary },
+  { value: 'stool', label: 'Stool', icon: 'emoticon-poop-outline', color: COLORS.primary },
+  { value: 'both',  label: 'Both',  icon: 'water-plus-outline', color: COLORS.primary },
+  { value: 'dry',   label: 'Dry',   icon: 'white-balance-sunny', color: COLORS.primary },
 ];
+
+// Which colours apply to a diaper type.
+const hasUrine = (type) => type === 'urine' || type === 'both';
+const hasStool = (type) => type === 'stool' || type === 'both';
 
 const tint = (color) => color + '22';
 
@@ -50,16 +56,65 @@ function parseTimeStr(str) {
   return d;
 }
 
-function HeroChip({ icon, emoji, value, label }) {
+// Tappable colour swatches. Tapping the selected one again clears it (colour is optional).
+function ColorPicker({ label, options, value, onChange, S }) {
+  const picked = findColor(options, value);
   return (
-    <View style={styles.heroChip}>
-      {emoji ? (
-        <Text style={styles.heroChipEmoji}>{emoji}</Text>
+    <View style={styles.section}>
+      <Text style={[styles.sectionLbl, { color: S.textSecondary }]}>{label}</Text>
+      <View style={styles.colorGrid}>
+        {options.map((c) => {
+          const on = value === c.value;
+          return (
+            <TouchableOpacity
+              key={c.value}
+              onPress={() => { Haptics.selectionAsync(); onChange(on ? null : c.value); }}
+              style={[
+                styles.colorChip,
+                on
+                  ? { backgroundColor: S.tile, borderColor: S.blue }
+                  : { backgroundColor: S.surface, borderColor: S.border },
+                on && styles.colorChipOn,
+              ]}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: on }}
+              accessibilityLabel={c.label}
+            >
+              <View style={[styles.swatch, { backgroundColor: c.swatch, borderColor: S.border }]}>
+                {on ? <Ionicons name="checkmark" size={12} color={c.value === 'pale' || c.value === 'yellow' ? '#333' : '#fff'} /> : null}
+              </View>
+              <Text style={[styles.colorText, { color: S.text }]} numberOfLines={1}>{c.label}</Text>
+              {c.warn ? <Ionicons name="alert-circle-outline" size={13} color={COLORS.error} /> : null}
+              {on ? <Ionicons name="checkmark-circle" size={16} color={S.blue} /> : null}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      {picked?.warn ? (
+        <View style={[styles.warnBox, { borderColor: COLORS.error + '44' }]}>
+          <Ionicons name="alert-circle" size={16} color={COLORS.error} />
+          <Text style={[styles.warnText, { color: COLORS.error }]}>{picked.warn}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// Drawn icon for a diaper type (no emoji).
+function DiaperIcon({ name, size = 22, color }) {
+  return <MaterialCommunityIcons name={name} size={size} color={color} />;
+}
+
+function HeroChip({ icon, mci, value, label, S }) {
+  return (
+    <View style={[styles.heroChip, { backgroundColor: S.surface, borderColor: S.border }]}>
+      {mci ? (
+        <DiaperIcon name={mci} size={22} color={S.blue} />
       ) : (
-        <Ionicons name={icon} size={18} color={COLORS.white} />
+        <Ionicons name={icon} size={22} color={S.blue} />
       )}
-      <Text style={styles.heroChipValue}>{value}</Text>
-      <Text style={styles.heroChipLabel}>{label}</Text>
+      <Text style={[styles.heroChipValue, { color: S.text }]}>{value}</Text>
+      <Text style={[styles.heroChipLabel, { color: S.textSecondary }]}>{label}</Text>
     </View>
   );
 }
@@ -68,11 +123,11 @@ export default function DiaperScreen({ navigation }) {
   const { getActiveBaby, darkMode } = useBabyStore();
   const baby = getActiveBaby();
   const babyId = baby?.id;
-  const C = darkMode ? DARK_COLORS : COLORS;
+  const S = darkMode ? SHOT_DARK : SHOT_LIGHT;
   const insets = useSafeAreaInsets();
 
   // Semantic tints that stay readable in dark mode.
-  const successTint = C.medicineLight; // === COLORS.successLight in light mode
+  const successTint = darkMode ? tint(COLORS.success) : COLORS.successLight;
   const errorTint = darkMode ? tint(COLORS.error) : COLORS.errorLight;
 
   const { load, addLog, getLogs } = useDiaperStore();
@@ -84,6 +139,8 @@ export default function DiaperScreen({ navigation }) {
   const [eventTime, setEventTime] = useState(new Date());
   const [eventTimeStr, setEventTimeStr] = useState('');
   const [changed, setChanged] = useState(null); // true | false | null
+  const [urineColor, setUrineColor] = useState(null);
+  const [stoolColor, setStoolColor] = useState(null);
   const [changeTime, setChangeTime] = useState(new Date());
   const [changeTimeStr, setChangeTimeStr] = useState('');
   const [saved, setSaved] = useState(false);
@@ -98,13 +155,18 @@ export default function DiaperScreen({ navigation }) {
     const tl = logs.filter((l) => new Date(l.eventTime || l.createdAt) >= today);
     const wetCount   = tl.filter((l) => l.eventType === 'urine' || l.eventType === 'both').length;
     const stoolCount = tl.filter((l) => l.eventType === 'stool' || l.eventType === 'both').length;
+    const dryCount   = tl.filter((l) => l.eventType === 'dry').length;
     const delays = tl
       .filter((l) => l.changed && l.changeTime && l.eventTime)
       .map((l) => Math.round((new Date(l.changeTime) - new Date(l.eventTime)) / 60000));
     const avgDelay = delays.length
       ? Math.round(delays.reduce((a, b) => a + b, 0) / delays.length)
       : null;
-    return { wetCount, stoolCount, avgDelay, total: tl.length };
+    // Today's entries whose colour may need the doctor's attention.
+    const colorAlerts = tl.filter((l) =>
+      findColor(URINE_COLORS, l.urineColor)?.warn || findColor(STOOL_COLORS, l.stoolColor)?.warn
+    ).length;
+    return { wetCount, stoolCount, dryCount, avgDelay, total: tl.length, colorAlerts };
   }, [logs]);
 
   // ─── actions ───
@@ -117,6 +179,8 @@ export default function DiaperScreen({ navigation }) {
     setChangeTime(now);
     setChangeTimeStr(fmtTime(now));
     setChanged(null);
+    setUrineColor(null);
+    setStoolColor(null);
     setStep('confirm');
   };
 
@@ -159,6 +223,8 @@ export default function DiaperScreen({ navigation }) {
       changed,
       changeTime: chTime?.toISOString() || null,
       delayMinutes,
+      urineColor: hasUrine(eventType) ? urineColor : null,
+      stoolColor: hasStool(eventType) ? stoolColor : null,
     });
 
     setStep(null);
@@ -172,7 +238,7 @@ export default function DiaperScreen({ navigation }) {
   const selectedEv = EVENT_TYPES.find((e) => e.value === eventType);
 
   return (
-    <View style={[styles.container, { backgroundColor: C.background }]}>
+    <View style={[styles.container, { backgroundColor: S.background }]}>
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
@@ -185,67 +251,79 @@ export default function DiaperScreen({ navigation }) {
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            style={[styles.backBtn, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={[styles.headerBtn, { backgroundColor: S.tile }]}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
           >
-            <Ionicons name="chevron-back" size={22} color={C.text} />
+            <Ionicons name="arrow-back" size={22} color={S.blue} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: C.text }]}>Diaper Log</Text>
-            <Text style={[styles.subtitle, { color: C.textSecondary }]}>Urine, stool & changes</Text>
+            <Text style={[styles.title, { color: S.text }]}>Diaper Log</Text>
+            <Text style={[styles.subtitle, { color: S.textSecondary }]}>Urine, stool & changes</Text>
           </View>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Settings')}
+            style={[styles.headerBtn, { backgroundColor: S.tile }]}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+          >
+            <Ionicons name="settings-outline" size={24} color={S.blue} />
+          </TouchableOpacity>
         </View>
 
         {/* ── Today Stats (hero) ── */}
-        <GradientView colors={GRADIENTS.diaper} bubbles style={[styles.hero, SHADOW.lg]}>
+        <View style={[styles.hero, { backgroundColor: S.hero }]}>
           <View style={styles.heroTop}>
-            <View style={styles.heroIcon}>
-              <Ionicons name="water" size={22} color={COLORS.white} />
+            <View style={[styles.heroIcon, { backgroundColor: S.tile }]}>
+              <Ionicons name="water-outline" size={26} color={S.blue} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.heroTitle}>Today</Text>
-              <Text style={styles.heroSub}>
+              <Text style={[styles.heroTitle, { color: S.text }]}>Today</Text>
+              <Text style={[styles.heroSub, { color: S.textSecondary }]}>
                 {stats.total} diaper event{stats.total !== 1 ? 's' : ''}
               </Text>
             </View>
           </View>
           <View style={styles.heroChips}>
-            <HeroChip emoji="💧" value={stats.wetCount} label="wet" />
-            <HeroChip emoji="💩" value={stats.stoolCount} label="stool" />
+            <HeroChip mci="water-outline" value={stats.wetCount} label="wet" S={S} />
+            <HeroChip mci="emoticon-poop-outline" value={stats.stoolCount} label="stool" S={S} />
+            <HeroChip mci="white-balance-sunny" value={stats.dryCount} label="dry" S={S} />
             <HeroChip
               icon="time-outline"
               value={stats.avgDelay !== null ? `${stats.avgDelay}m` : '--'}
               label="avg delay"
+              S={S}
             />
           </View>
-        </GradientView>
+        </View>
 
         {/* ── Toast ── */}
         {saved && (
-          <View style={[styles.toast, { backgroundColor: successTint, borderColor: COLORS.success + '44' }]}>
-            <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
-            <Text style={[styles.toastText, { color: COLORS.success }]}>Diaper event logged!</Text>
+          <View style={[styles.toast, { backgroundColor: S.card, borderColor: COLORS.success + '40' }]}>
+            <Ionicons name="checkmark-circle-outline" size={22} color={COLORS.success} />
+            <Text style={[styles.toastText, { color: S.text }]}>Diaper event logged!</Text>
           </View>
         )}
 
         {/* ── Step 1 : What happened? ── */}
         {step === null && (
           <>
-            <Text style={[styles.sectionTitle, { color: C.text }]}>What happened?</Text>
+            <Text style={[styles.sectionTitle, { color: S.text }]}>What happened?</Text>
             <View style={styles.eventRow}>
               {EVENT_TYPES.map((ev) => (
                 <TouchableOpacity
                   key={ev.value}
                   onPress={() => handleSelectType(ev.value)}
-                  style={[styles.eventCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}
+                  style={[styles.eventCard, { backgroundColor: S.surface, borderColor: S.border }]}
                   activeOpacity={0.75}
                   accessibilityRole="button"
                   accessibilityLabel={ev.label}
                 >
-                  <View style={[styles.eventTile, { backgroundColor: tint(ev.color) }]}>
-                    <Text style={styles.eventEmoji}>{ev.emoji}</Text>
+                  <View style={[styles.eventTile, { backgroundColor: S.tile }]}>
+                    <DiaperIcon name={ev.icon} size={28} color={S.blue} />
                   </View>
-                  <Text style={[styles.eventLabel, { color: ev.color }]}>{ev.label}</Text>
+                  <Text style={[styles.eventLabel, { color: S.text }]}>{ev.label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -254,71 +332,82 @@ export default function DiaperScreen({ navigation }) {
 
         {/* ── Step 2+3 : Confirm form ── */}
         {step === 'confirm' && selectedEv && (
-          <View style={[styles.confirmCard, { backgroundColor: C.card, borderColor: selectedEv.color + '50' }, SHADOW.sm]}>
+          <View style={[styles.confirmCard, { backgroundColor: S.hero }]}>
 
             {/* Card header */}
-            <View style={[styles.confirmHeader, { backgroundColor: tint(selectedEv.color) }]}>
-              <View style={[styles.confirmTile, { backgroundColor: C.card }]}>
-                <Text style={styles.confirmEmoji}>{selectedEv.emoji}</Text>
+            <View style={styles.confirmHeader}>
+              <View style={[styles.confirmTile, { backgroundColor: S.surface, borderColor: S.border }]}>
+                <DiaperIcon name={selectedEv.icon} size={24} color={S.blue} />
               </View>
-              <Text style={[styles.confirmType, { color: selectedEv.color }]}>{selectedEv.label}</Text>
-              <TouchableOpacity onPress={() => setStep(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close-circle" size={26} color={C.textMuted} />
+              <Text style={[styles.confirmType, { color: S.text }]}>{selectedEv.label}</Text>
+              <TouchableOpacity
+                onPress={() => setStep(null)}
+                style={[styles.headerBtn, { backgroundColor: S.tile }]}
+              >
+                <Ionicons name="close" size={24} color={S.text} />
               </TouchableOpacity>
             </View>
 
             {/* Event time */}
             <View style={styles.section}>
-              <Text style={[styles.sectionLbl, { color: C.textSecondary }]}>WHEN DID IT HAPPEN?</Text>
+              <Text style={[styles.sectionLbl, { color: S.textSecondary }]}>WHEN DID IT HAPPEN?</Text>
               <View style={styles.timeRow}>
                 <TouchableOpacity
                   onPress={() => adjustTime(setEventTime, setEventTimeStr, eventTimeStr, eventTime, -5)}
-                  style={[styles.adjBtn, { backgroundColor: C.background, borderColor: C.border }]}
+                  style={[styles.adjBtn, { backgroundColor: S.tile }]}
                 >
-                  <Text style={[styles.adjText, { color: C.text }]}>−5m</Text>
+                  <Text style={[styles.adjText, { color: S.text }]}>−5m</Text>
                 </TouchableOpacity>
                 <TextInput
-                  style={[styles.timeInput, { color: C.text, backgroundColor: C.background, borderColor: selectedEv.color }]}
+                  style={[styles.timeInput, { color: S.text, backgroundColor: S.surface, borderColor: S.border }]}
                   value={eventTimeStr}
                   onChangeText={setEventTimeStr}
                   selectTextOnFocus
                 />
                 <TouchableOpacity
                   onPress={() => adjustTime(setEventTime, setEventTimeStr, eventTimeStr, eventTime, 5)}
-                  style={[styles.adjBtn, { backgroundColor: C.background, borderColor: C.border }]}
+                  style={[styles.adjBtn, { backgroundColor: S.tile }]}
                 >
-                  <Text style={[styles.adjText, { color: C.text }]}>+5m</Text>
+                  <Text style={[styles.adjText, { color: S.text }]}>+5m</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
+            {/* Colours (optional) */}
+            {hasUrine(eventType) && (
+              <ColorPicker label="URINE COLOUR" options={URINE_COLORS} value={urineColor} onChange={setUrineColor} S={S} />
+            )}
+            {hasStool(eventType) && (
+              <ColorPicker label="STOOL COLOUR" options={STOOL_COLORS} value={stoolColor} onChange={setStoolColor} S={S} />
+            )}
+
             {/* Changed? */}
             <View style={styles.section}>
-              <Text style={[styles.sectionLbl, { color: C.textSecondary }]}>WAS DIAPER CHANGED?</Text>
+              <Text style={[styles.sectionLbl, { color: S.textSecondary }]}>WAS DIAPER CHANGED?</Text>
               <View style={styles.yesNoRow}>
                 <TouchableOpacity
                   onPress={() => { Haptics.selectionAsync(); setChanged(true); }}
                   style={[
                     styles.yesNoBtn,
                     changed === true
-                      ? { backgroundColor: successTint, borderColor: COLORS.success }
-                      : { backgroundColor: C.card, borderColor: C.border },
+                      ? { backgroundColor: S.tile, borderColor: S.blue, borderWidth: 1.5 }
+                      : { backgroundColor: S.surface, borderColor: S.border },
                   ]}
                 >
-                  <Ionicons name="checkmark-circle" size={20} color={changed === true ? COLORS.success : C.textMuted} />
-                  <Text style={[styles.yesNoText, { color: changed === true ? COLORS.success : C.text }]}>Yes, changed</Text>
+                  <Ionicons name={changed === true ? 'checkmark-circle' : 'checkmark-circle-outline'} size={22} color={changed === true ? S.blue : S.textSecondary} />
+                  <Text style={[styles.yesNoText, { color: changed === true ? S.blueText : S.text }]}>Yes, changed</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => { Haptics.selectionAsync(); setChanged(false); }}
                   style={[
                     styles.yesNoBtn,
                     changed === false
-                      ? { backgroundColor: errorTint, borderColor: COLORS.error }
-                      : { backgroundColor: C.card, borderColor: C.border },
+                      ? { backgroundColor: S.tile, borderColor: S.blue, borderWidth: 1.5 }
+                      : { backgroundColor: S.surface, borderColor: S.border },
                   ]}
                 >
-                  <Ionicons name="close-circle" size={20} color={changed === false ? COLORS.error : C.textMuted} />
-                  <Text style={[styles.yesNoText, { color: changed === false ? COLORS.error : C.text }]}>Not yet</Text>
+                  <Ionicons name={changed === false ? 'checkmark-circle' : 'close-circle-outline'} size={22} color={changed === false ? S.blue : S.textSecondary} />
+                  <Text style={[styles.yesNoText, { color: changed === false ? S.blueText : S.text }]}>Not yet</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -326,25 +415,25 @@ export default function DiaperScreen({ navigation }) {
             {/* Change time */}
             {changed === true && (
               <View style={styles.section}>
-                <Text style={[styles.sectionLbl, { color: C.textSecondary }]}>CHANGED AT</Text>
+                <Text style={[styles.sectionLbl, { color: S.textSecondary }]}>CHANGED AT</Text>
                 <View style={styles.timeRow}>
                   <TouchableOpacity
                     onPress={() => adjustTime(setChangeTime, setChangeTimeStr, changeTimeStr, changeTime, -5)}
-                    style={[styles.adjBtn, { backgroundColor: C.background, borderColor: C.border }]}
+                    style={[styles.adjBtn, { backgroundColor: S.tile }]}
                   >
-                    <Text style={[styles.adjText, { color: C.text }]}>−5m</Text>
+                    <Text style={[styles.adjText, { color: S.text }]}>−5m</Text>
                   </TouchableOpacity>
                   <TextInput
-                    style={[styles.timeInput, { color: C.text, backgroundColor: C.background, borderColor: COLORS.success }]}
+                    style={[styles.timeInput, { color: S.text, backgroundColor: S.surface, borderColor: S.border }]}
                     value={changeTimeStr}
                     onChangeText={setChangeTimeStr}
                     selectTextOnFocus
                   />
                   <TouchableOpacity
                     onPress={() => adjustTime(setChangeTime, setChangeTimeStr, changeTimeStr, changeTime, 5)}
-                    style={[styles.adjBtn, { backgroundColor: C.background, borderColor: C.border }]}
+                    style={[styles.adjBtn, { backgroundColor: S.tile }]}
                   >
-                    <Text style={[styles.adjText, { color: C.text }]}>+5m</Text>
+                    <Text style={[styles.adjText, { color: S.text }]}>+5m</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -358,33 +447,38 @@ export default function DiaperScreen({ navigation }) {
             <TouchableOpacity
               onPress={handleSave}
               disabled={cannotSave}
-              style={styles.saveWrap}
+              style={[styles.saveWrap, cannotSave && styles.disabled]}
               activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel="Save diaper event"
             >
-              {cannotSave ? (
-                <View style={[styles.saveBtn, { backgroundColor: C.border }]}>
-                  <Ionicons name="checkmark-circle" size={22} color={C.textMuted} />
-                  <Text style={[styles.saveBtnText, { color: C.textMuted }]}>Save</Text>
-                </View>
-              ) : (
-                <GradientView colors={GRADIENTS.diaper} style={[styles.saveBtn, SHADOW.md]}>
-                  <Ionicons name="checkmark-circle" size={22} color={COLORS.white} />
-                  <Text style={[styles.saveBtnText, { color: COLORS.white }]}>Save</Text>
-                </GradientView>
-              )}
+              <View style={[styles.saveBtn, { backgroundColor: S.blue }]}>
+                <Ionicons name="checkmark-circle-outline" size={24} color={COLORS.white} />
+                <Text style={[styles.saveBtnText, { color: COLORS.white }]}>Save</Text>
+              </View>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── Colour alert ── */}
+        {stats.colorAlerts > 0 && step === null && (
+          <View style={[styles.insightCard, { backgroundColor: errorTint, borderColor: COLORS.error + '33' }]}>
+            <View style={[styles.insightIcon, { backgroundColor: S.surface }]}>
+              <Ionicons name="alert-circle" size={18} color={COLORS.error} />
+            </View>
+            <Text style={[styles.insightText, { color: COLORS.error }]}>
+              {stats.colorAlerts} diaper{stats.colorAlerts > 1 ? 's' : ''} today with a colour to show the doctor
+            </Text>
           </View>
         )}
 
         {/* ── Insight Banner ── */}
         {stats.avgDelay !== null && step === null && (
-          <View style={[styles.insightCard, { backgroundColor: C.primaryLight, borderColor: COLORS.primary + '33' }]}>
-            <View style={[styles.insightIcon, { backgroundColor: C.card }]}>
-              <Ionicons name="bulb-outline" size={16} color={COLORS.primary} />
+          <View style={[styles.insightCard, { backgroundColor: S.hero, borderColor: S.border }]}>
+            <View style={[styles.insightIcon, { backgroundColor: S.surface }]}>
+              <Ionicons name="bulb-outline" size={18} color={S.blue} />
             </View>
-            <Text style={[styles.insightText, { color: COLORS.primary }]}>
+            <Text style={[styles.insightText, { color: S.text }]}>
               Avg diaper change delay today: {stats.avgDelay} min
             </Text>
           </View>
@@ -393,10 +487,10 @@ export default function DiaperScreen({ navigation }) {
         {/* ── History ── */}
         {logs.length > 0 && step === null && (
           <>
-            <Text style={[styles.sectionTitle, styles.historyTitle, { color: C.text }]}>History</Text>
+            <Text style={[styles.sectionTitle, styles.historyTitle, { color: S.text }]}>History</Text>
             {logs.slice(0, 15).map((log) => {
               const ev = EVENT_TYPES.find((e) => e.value === log.eventType)
-                || { emoji: '💧', label: 'Diaper', color: COLORS.diaper };
+                || { icon: 'diaper-outline', label: 'Diaper', color: COLORS.primary };
               const evDate = new Date(log.eventTime || log.createdAt);
               const evTimeStr = evDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
               const chTimeStr = log.changeTime
@@ -404,13 +498,13 @@ export default function DiaperScreen({ navigation }) {
                 : null;
 
               return (
-                <View key={log.id} style={[styles.logItem, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
-                  <View style={[styles.logIconWrap, { backgroundColor: tint(ev.color) }]}>
-                    <Text style={{ fontSize: 20 }}>{ev.emoji}</Text>
+                <View key={log.id} style={[styles.logItem, { backgroundColor: S.card }]}>
+                  <View style={[styles.logIconWrap, { backgroundColor: S.surface, borderColor: S.border }]}>
+                    <DiaperIcon name={ev.icon} size={24} color={S.text} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <View style={styles.logTitleRow}>
-                      <Text style={[styles.logTitle, { color: C.text }]}>{ev.label}</Text>
+                      <Text style={[styles.logTitle, { color: S.text }]}>{ev.label}</Text>
                       {log.delayMinutes != null && (
                         <View style={[
                           styles.delayBadge,
@@ -425,12 +519,28 @@ export default function DiaperScreen({ navigation }) {
                         </View>
                       )}
                     </View>
-                    <Text style={[styles.logSub, { color: C.textSecondary }]}>
+                    <Text style={[styles.logSub, { color: S.text }]}>
                       {evTimeStr}
                       {log.changed && chTimeStr
                         ? `  →  Changed at ${chTimeStr}`
                         : '  →  Not changed'}
                     </Text>
+                    {(log.urineColor || log.stoolColor) ? (
+                      <View style={styles.logColors}>
+                        {[
+                          ['Urine', findColor(URINE_COLORS, log.urineColor)],
+                          ['Stool', findColor(STOOL_COLORS, log.stoolColor)],
+                        ].filter(([, c]) => c).map(([kind, c]) => (
+                          <View key={kind} style={styles.logColor}>
+                            <View style={[styles.swatchSm, { backgroundColor: c.swatch, borderColor: S.border }]} />
+                            <Text style={[styles.logColorText, { color: c.warn ? COLORS.error : S.textSecondary }]}>
+                              {kind}: {c.label}
+                            </Text>
+                            {c.warn ? <Ionicons name="alert-circle" size={12} color={COLORS.error} /> : null}
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
                   </View>
                 </View>
               );
@@ -449,68 +559,62 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: SPACING.lg,
   },
-  backBtn: {
-    width: 42, height: 42, borderRadius: 14, borderWidth: 1,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  title: { fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.8 },
-  subtitle: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
+  headerBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 28, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  subtitle: { fontSize: 15, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
 
-  hero: { borderRadius: RADIUS.xxl, padding: SPACING.lg, marginBottom: SPACING.lg },
-  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  hero: { borderRadius: 28, padding: 20, marginBottom: SPACING.lg },
+  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   heroIcon: {
-    width: 44, height: 44, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.22)',
+    width: 56, height: 56, borderRadius: 16,
     alignItems: 'center', justifyContent: 'center',
   },
-  heroTitle: { color: COLORS.white, fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.4 },
-  heroSub: { color: 'rgba(255,255,255,0.9)', fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
+  heroTitle: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.4 },
+  heroSub: { fontSize: 15, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
   heroChips: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
   heroChip: {
     flex: 1, alignItems: 'center', paddingVertical: 12, gap: 2,
-    borderRadius: RADIUS.lg, backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 20, borderWidth: 1,
   },
-  heroChipEmoji: { fontSize: 18 },
-  heroChipValue: { color: COLORS.white, fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.heavy, lineHeight: 28 },
-  heroChipLabel: { color: 'rgba(255,255,255,0.88)', fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold },
+  heroChipValue: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.heavy, lineHeight: 28 },
+  heroChipLabel: { fontSize: 13, fontWeight: FONT_WEIGHT.semibold },
+  disabled: { opacity: 0.45 },
 
   toast: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1,
-    padding: 12, borderRadius: RADIUS.lg, marginBottom: SPACING.md,
+    flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, minHeight: 48,
+    padding: 14, borderRadius: RADIUS.full, marginBottom: SPACING.md,
   },
-  toastText: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
+  toastText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold },
 
   sectionTitle: {
-    fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3, marginBottom: SPACING.md,
+    fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3, marginBottom: 12,
   },
   historyTitle: { marginTop: SPACING.sm },
 
   eventRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
   eventCard: {
     flex: 1, alignItems: 'center', paddingVertical: SPACING.md,
-    borderRadius: RADIUS.xl, borderWidth: 1, gap: 8,
+    borderRadius: 20, borderWidth: 1, gap: 8,
   },
   eventTile: {
-    width: 56, height: 56, borderRadius: 18,
+    width: 52, height: 52, borderRadius: 16,
     alignItems: 'center', justifyContent: 'center',
   },
-  eventEmoji: { fontSize: 26 },
-  eventLabel: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.heavy },
+  eventLabel: { fontSize: 15, fontWeight: FONT_WEIGHT.bold },
 
   confirmCard: {
-    borderRadius: RADIUS.xl, borderWidth: 1.5,
+    borderRadius: 28, paddingVertical: 8,
     marginBottom: SPACING.lg,
   },
   confirmHeader: {
     flexDirection: 'row', alignItems: 'center',
-    borderTopLeftRadius: RADIUS.xl - 1.5, borderTopRightRadius: RADIUS.xl - 1.5,
-    paddingHorizontal: SPACING.md, paddingVertical: SPACING.md, gap: SPACING.sm + 4,
+    paddingHorizontal: SPACING.md, paddingTop: SPACING.sm, gap: SPACING.sm + 4,
   },
   confirmTile: {
-    width: 42, height: 42, borderRadius: 14,
+    width: 48, height: 48, borderRadius: 14, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
-  confirmEmoji: { fontSize: 20 },
-  confirmType: { flex: 1, fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
+  confirmType: { flex: 1, fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
 
   section: { paddingHorizontal: SPACING.md, paddingTop: SPACING.md },
   sectionLbl: {
@@ -520,21 +624,21 @@ const styles = StyleSheet.create({
 
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   adjBtn: {
-    paddingVertical: 12, paddingHorizontal: 14,
-    borderRadius: RADIUS.md, borderWidth: 1,
+    minHeight: 56, minWidth: 64, paddingHorizontal: 12,
+    borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center',
   },
-  adjText: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
+  adjText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold },
   timeInput: {
-    flex: 1, height: 50, borderRadius: RADIUS.md, borderWidth: 2,
+    flex: 1, minHeight: 56, borderRadius: 16, borderWidth: 1.5,
     textAlign: 'center', fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy,
   },
 
   yesNoRow: { flexDirection: 'row', gap: SPACING.sm },
   yesNoBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, paddingVertical: 14, borderRadius: RADIUS.lg, borderWidth: 1.5,
+    gap: 8, minHeight: 56, borderRadius: 20, borderWidth: 1,
   },
-  yesNoText: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
+  yesNoText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold },
 
   errorText: {
     fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold,
@@ -544,31 +648,52 @@ const styles = StyleSheet.create({
   saveWrap: { margin: SPACING.md, marginTop: SPACING.lg },
   saveBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    padding: 16, borderRadius: RADIUS.full, gap: 8,
+    minHeight: 56, paddingHorizontal: SPACING.lg, borderRadius: RADIUS.full, gap: 10,
   },
-  saveBtnText: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy },
+  saveBtnText: { fontSize: 18, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.2 },
 
   insightCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1,
-    padding: 12, borderRadius: RADIUS.lg, marginBottom: SPACING.lg,
+    flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1,
+    padding: 14, borderRadius: 20, marginBottom: SPACING.lg,
   },
   insightIcon: {
-    width: 32, height: 32, borderRadius: 11,
+    width: 36, height: 36, borderRadius: 12,
     alignItems: 'center', justifyContent: 'center',
   },
-  insightText: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, flex: 1 },
+  insightText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold, flex: 1 },
 
   logItem: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
-    padding: 14, borderRadius: RADIUS.xl, borderWidth: 1, marginBottom: SPACING.sm,
+    flexDirection: 'row', alignItems: 'center', gap: 16,
+    padding: 16, borderRadius: 20, marginBottom: 10,
   },
   logIconWrap: {
-    width: 44, height: 44, borderRadius: 15,
+    width: 48, height: 48, borderRadius: 14, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
   logTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
-  logTitle: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
+  logTitle: { fontSize: 17, fontWeight: FONT_WEIGHT.bold },
   delayBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.full },
-  delayBadgeText: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
-  logSub: { fontSize: FONT_SIZE.sm },
+  delayBadgeText: { fontSize: 13, fontWeight: FONT_WEIGHT.bold },
+  logSub: { fontSize: 15 },
+  colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  colorChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingVertical: 8, paddingLeft: 10, paddingRight: 12,
+    borderRadius: RADIUS.full, borderWidth: 1, minHeight: 48,
+  },
+  colorChipOn: { borderWidth: 1.5 },
+  swatch: {
+    width: 22, height: 22, borderRadius: 11, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  colorText: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold },
+  warnBox: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    padding: 10, borderRadius: RADIUS.md, borderWidth: 1, marginTop: 4,
+  },
+  warnText: { flex: 1, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, lineHeight: 19 },
+  logColors: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 6 },
+  logColor: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  swatchSm: { width: 12, height: 12, borderRadius: 6, borderWidth: 1 },
+  logColorText: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold },
 });

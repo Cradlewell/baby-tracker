@@ -1,13 +1,15 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { useBabyStore } from '../store/useBabyStore';
 import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
 import GradientView from '../components/GradientView';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
 import { calcAge } from '../utils/formatters';
+import { useAuthStore } from '../store/useAuthStore';
+import { openSwitchClient } from '../lib/switchClientFlow';
 
 function MenuSection({ title, items, C }) {
   return (
@@ -22,15 +24,13 @@ function MenuSection({ title, items, C }) {
               accessibilityRole="button"
               accessibilityLabel={item.label}
             >
-              {item.gradient ? (
-                <GradientView colors={item.gradient} style={styles.menuIcon}>
-                  <Ionicons name={item.icon} size={20} color={COLORS.white} />
-                </GradientView>
-              ) : (
-                <View style={[styles.menuIcon, { backgroundColor: C.border }]}>
-                  <Ionicons name={item.icon} size={20} color={C.textSecondary} />
-                </View>
-              )}
+              <View style={[styles.menuIcon, { backgroundColor: C.primaryLight }]}>
+                {item.mci ? (
+                  <MaterialCommunityIcons name={item.mci} size={22} color={C.primary} />
+                ) : (
+                  <Ionicons name={item.icon.endsWith('-outline') ? item.icon : `${item.icon}-outline`} size={22} color={C.primary} />
+                )}
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.menuLabel, { color: C.text }]}>{item.label}</Text>
                 {item.sub && <Text style={[styles.menuSub, { color: C.textSecondary }]}>{item.sub}</Text>}
@@ -54,6 +54,8 @@ export default function MoreScreen({ navigation }) {
   const { getActiveBaby, darkMode } = useBabyStore();
   const baby = getActiveBaby();
   const C = darkMode ? DARK_COLORS : COLORS;
+  const client = useAuthStore((s) => s.client);
+  const user = useAuthStore((s) => s.user);
   const insets = useSafeAreaInsets();
 
   return (
@@ -75,7 +77,7 @@ export default function MoreScreen({ navigation }) {
             accessibilityRole="button"
             accessibilityLabel={`Edit ${baby.name}'s profile`}
           >
-            <GradientView colors={GRADIENTS.brand} bubbles style={[styles.babyCard, SHADOW.lg]}>
+            <GradientView colors={GRADIENTS.brand} style={[styles.babyCard, SHADOW.lg]}>
               <View style={styles.babyAvatarRing}>
                 <View style={styles.babyAvatar}>
                   <Text style={styles.babyAvatarText}>{baby.name?.[0]?.toUpperCase()}</Text>
@@ -96,47 +98,36 @@ export default function MoreScreen({ navigation }) {
           title="TRACK"
           C={C}
           items={[
-            {
-              label: 'Diaper Log',
-              sub: 'Urine, stool, both',
-              icon: 'water',
-              color: COLORS.diaper,
-              gradient: GRADIENTS.diaper,
-              onPress: () => navigation.navigate('Diaper'),
-            },
-            {
-              label: 'Medicine',
-              sub: 'Track doses given or skipped',
-              icon: 'medical',
-              color: COLORS.medicine,
-              gradient: GRADIENTS.medicine,
-              onPress: () => navigation.navigate('Medicine'),
-            },
-            {
-              label: 'Vaccination',
-              sub: 'Schedule & completed',
-              icon: 'shield-checkmark',
-              color: COLORS.vaccination,
-              gradient: GRADIENTS.vaccination,
-              onPress: () => navigation.navigate('Vaccination'),
-            },
+            { label: 'Temperature', sub: 'Track body temperature', mci: 'thermometer', onPress: () => navigation.navigate('Temperature') },
+            { label: 'Breathing', sub: 'Respiratory rate & effort', mci: 'lungs', onPress: () => navigation.navigate('Breathing') },
+            { label: 'Skin & Jaundice', sub: 'Rash, yellowing, skin changes', mci: 'face-man-shimmer-outline', onPress: () => navigation.navigate('Skin') },
+            { label: 'Milestones', sub: 'Track development', icon: 'flag-outline', onPress: () => navigation.navigate('Milestones') },
           ]}
         />
 
         <MenuSection
-          title="REPORTS"
+          title="MANAGE"
+          C={C}
+          items={[
+            { label: 'Medication', sub: 'Track doses & reminders', mci: 'calendar-clock', onPress: () => navigation.navigate('Medicine') },
+            { label: 'Vaccination', sub: 'Schedule & completed', mci: 'needle', onPress: () => navigation.navigate('Vaccination') },
+          ]}
+        />
+
+        {user?.role === 'client' ? null : (
+        <MenuSection
+          title="CLIENT"
           C={C}
           items={[
             {
-              label: 'Daily Summary',
-              sub: "Today's full report",
-              icon: 'bar-chart',
-              color: COLORS.primary,
-              gradient: GRADIENTS.brandDeep,
-              onPress: () => navigation.navigate('Summary'),
+              label: 'Switch Client',
+              sub: client?.name ? `Now: ${client.name} · enter another phone number` : "Enter another client's phone number",
+              icon: 'swap-horizontal',
+              onPress: () => openSwitchClient(navigation),
             },
           ]}
         />
+        )}
 
         <MenuSection
           title="PREFERENCES"

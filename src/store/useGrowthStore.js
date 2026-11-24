@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '../lib/storage';
 import { uid, toKg, KG_PER_LB } from '../utils/formatters';
 
 const key = (babyId) => `@cw_growth_${babyId}`;

@@ -4,7 +4,7 @@ import {
   ScrollView, Animated, Dimensions, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useBabyStore } from '../store/useBabyStore';
 import { useGrowthStore } from '../store/useGrowthStore';
 import { validateDob, formatDobInput, parseDob, parsePositiveNumber } from '../utils/formatters';
@@ -31,11 +31,11 @@ function ProgressDots({ current, total }) {
   );
 }
 
-function StepBadge({ emoji }) {
+function StepBadge({ icon }) {
   return (
     <View style={styles.badgeHalo}>
       <GradientView colors={GRADIENTS.brand} style={styles.badge}>
-        <Text style={styles.stepEmoji}>{emoji}</Text>
+        <MaterialCommunityIcons name={icon} size={52} color={COLORS.white} />
       </GradientView>
     </View>
   );
@@ -145,7 +145,7 @@ export default function OnboardingScreen({ navigation }) {
       case 'name':
         return (
           <View style={styles.stepContent}>
-            <StepBadge emoji="👶" />
+            <StepBadge icon="baby-face-outline" />
             <Text style={styles.stepTitle}>What's your baby's name?</Text>
             <Text style={styles.stepSub}>You can change this anytime</Text>
             <TextInput
@@ -163,7 +163,7 @@ export default function OnboardingScreen({ navigation }) {
       case 'dob':
         return (
           <View style={styles.stepContent}>
-            <StepBadge emoji="🎂" />
+            <StepBadge icon="cake-variant-outline" />
             <Text style={styles.stepTitle}>When was {form.name || 'baby'} born?</Text>
             <Text style={styles.stepSub}>Enter date of birth</Text>
             <TextInput
@@ -181,7 +181,7 @@ export default function OnboardingScreen({ navigation }) {
       case 'gender':
         return (
           <View style={styles.stepContent}>
-            <StepBadge emoji="💝" />
+            <StepBadge icon="gender-male-female" />
             <Text style={styles.stepTitle}>Gender</Text>
             <Text style={styles.stepSub}>Helps personalize your experience</Text>
             <View style={styles.pillRow}>
@@ -203,7 +203,7 @@ export default function OnboardingScreen({ navigation }) {
       case 'weight':
         return (
           <View style={styles.stepContent}>
-            <StepBadge emoji="⚖️" />
+            <StepBadge icon="scale-bathroom" />
             <Text style={styles.stepTitle}>Birth weight</Text>
             <Text style={styles.stepSub}>Optional — track growth from day one</Text>
             <View style={styles.inputRow}>
@@ -235,7 +235,7 @@ export default function OnboardingScreen({ navigation }) {
       case 'feeding':
         return (
           <View style={styles.stepContent}>
-            <StepBadge emoji="🍼" />
+            <StepBadge icon="baby-bottle-outline" />
             <Text style={styles.stepTitle}>Feeding type</Text>
             <Text style={styles.stepSub}>We'll customize your tracker for this</Text>
             <View style={styles.pillColumn}>
@@ -304,7 +304,7 @@ export default function OnboardingScreen({ navigation }) {
         >
           <GradientView colors={GRADIENTS.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.cta}>
             <Text style={styles.ctaText}>
-              {step === STEPS.length - 1 ? "Let's go 🎉" : 'Continue'}
+              {step === STEPS.length - 1 ? "Let's go" : 'Continue'}
             </Text>
             <View style={styles.ctaArrow}>
               <Ionicons name="arrow-forward" size={18} color={COLORS.white} />
@@ -340,7 +340,6 @@ const styles = StyleSheet.create({
     width: 112, height: 112, borderRadius: 40, alignItems: 'center', justifyContent: 'center',
     ...SHADOW.lg,
   },
-  stepEmoji: { fontSize: 56 },
   stepTitle: { fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.heavy, color: COLORS.text, textAlign: 'center', letterSpacing: -0.6 },
   stepSub: { fontSize: FONT_SIZE.md, color: COLORS.textSecondary, textAlign: 'center', marginTop: -6, marginBottom: SPACING.sm },
   input: {

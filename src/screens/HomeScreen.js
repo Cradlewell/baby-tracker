@@ -1,45 +1,51 @@
 import React, { useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, FlatList,
+  RefreshControl, FlatList, Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { useBabyStore } from '../store/useBabyStore';
 import { useFeedingStore } from '../store/useFeedingStore';
 import { useSleepStore } from '../store/useSleepStore';
 import { useDiaperStore } from '../store/useDiaperStore';
-import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
+import { useMedicineStore, upcomingDoses } from '../store/useMedicineStore';
+import { useGrowthStore } from '../store/useGrowthStore';
+import { useVaccinationStore } from '../store/useVaccinationStore';
+import { differenceInCalendarDays } from 'date-fns';
+import { COLORS, DARK_COLORS, GRADIENTS, QUICK_LOG_GRADIENTS } from '../constants/colors';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
 import GradientView from '../components/GradientView';
+import { useAuthStore } from '../store/useAuthStore';
+import { openSwitchClient } from '../lib/switchClientFlow';
+import { useHealthCheck } from '../lib/useHealthCheck';
+import { AlertCard } from './HealthAlertsScreen';
+import { recentActivity } from '../lib/recentActivity';
 import {
-  formatRelative, formatDuration, calcAge, getGreeting, startOfToday,
+  useTemperatureStore, useBreathingStore, useSkinStore, useMilestoneStore,
+} from '../store/useHealthStores';
+import {
+  formatRelative, formatDuration, calcAge, startOfToday, formatWeight,
 } from '../utils/formatters';
 
-// Feeds are timed from when they started; diapers from when the event happened.
-const feedTime = (l) => l.startTime || l.createdAt;
-const sleepEndTime = (l) => l.endTime || l.createdAt;
-const diaperTime = (l) => l.eventTime || l.createdAt;
-
-function StatCard({ icon, color, tint, label, value, sub, onPress, C }) {
+function StatCard({ icon, title, sub, alert, onPress, C }) {
   return (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.8}
       style={[styles.statCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}
       accessibilityRole="button"
-      accessibilityLabel={`${label}: ${value}`}
+      accessibilityLabel={`${title}: ${sub}`}
     >
-      <View style={styles.statTop}>
-        <View style={[styles.statIcon, { backgroundColor: tint }]}>
-          <Ionicons name={icon} size={18} color={color} />
-        </View>
-        <Ionicons name="arrow-up" size={15} color={C.textMuted} style={styles.statArrow} />
+      <View style={[styles.statIcon, { backgroundColor: C.primaryLight }]}>
+        <Ionicons name={icon} size={22} color={C.primary} />
       </View>
-      <Text style={[styles.statValue, { color: C.text }]} numberOfLines={1}>{value}</Text>
-      <Text style={[styles.statLabel, { color }]}>{label}</Text>
-      {sub ? <Text style={[styles.statSub, { color: C.textMuted }]} numberOfLines={1}>{sub}</Text> : null}
+      <Text style={[styles.statTitle, { color: C.text }]} numberOfLines={1}>{title}</Text>
+      <View style={styles.statFoot}>
+        <Text style={[styles.statSub, { color: alert ? COLORS.error : C.textSecondary }]} numberOfLines={2}>{sub}</Text>
+        <Ionicons name="chevron-forward" size={16} color={C.textSecondary} />
+      </View>
     </TouchableOpacity>
   );
 }
@@ -61,32 +67,40 @@ function QuickAction({ icon, gradient, label, onPress, C }) {
   );
 }
 
-function HeroStat({ value, label }) {
-  return (
-    <View style={styles.heroStat}>
-      <Text style={styles.heroStatValue} numberOfLines={1}>{value}</Text>
-      <Text style={styles.heroStatLabel}>{label}</Text>
-    </View>
-  );
-}
-
 export default function HomeScreen({ navigation }) {
   const { getActiveBaby, darkMode, babies, activeBabyId, setActiveBaby } = useBabyStore();
   const baby = getActiveBaby();
   const babyId = baby?.id;
   const C = darkMode ? DARK_COLORS : COLORS;
+  const client = useAuthStore((s) => s.client);
+  const user = useAuthStore((s) => s.user);
 
   const loadFeeding = useFeedingStore((s) => s.load);
   const loadSleep = useSleepStore((s) => s.load);
   const loadDiaper = useDiaperStore((s) => s.load);
+  const loadMedicine = useMedicineStore((s) => s.load);
+  const loadGrowth = useGrowthStore((s) => s.load);
+  const loadVaccines = useVaccinationStore((s) => s.load);
 
-  const lastFeed = useFeedingStore((s) => s.getLastLog(babyId));
-  const lastSleep = useSleepStore((s) => s.getLastLog(babyId));
-  const lastDiaper = useDiaperStore((s) => s.getLastLog(babyId));
   const todaySleepSecs = useSleepStore((s) => s.getTodayTotalSecs(babyId));
 
   const rawFeedLogs = useFeedingStore((s) => s.logs[babyId]);
   const rawDiaperLogs = useDiaperStore((s) => s.logs[babyId]);
+  const rawMedLogs = useMedicineStore((s) => s.logs[babyId]);
+  const rawGrowthLogs = useGrowthStore((s) => s.logs[babyId]);
+  const rawVaccines = useVaccinationStore((s) => s.records[babyId]);
+  const rawSleepLogs = useSleepStore((s) => s.logs[babyId]);
+  const rawTemps = useTemperatureStore((s) => s.logs[babyId]);
+  const rawBreaths = useBreathingStore((s) => s.logs[babyId]);
+  const rawSkin = useSkinStore((s) => s.logs[babyId]);
+  const rawMilestones = useMilestoneStore((s) => s.logs[babyId]);
+
+  // Ticks every 30 seconds so the next-dose countdown stays current.
+  const [now, setNow] = React.useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
 
   const feedSession = useFeedingStore((s) => s.session);
   const sleepSession = useSleepStore((s) => s.session);
@@ -101,6 +115,30 @@ export default function HomeScreen({ navigation }) {
     return (rawDiaperLogs || []).filter((l) => new Date(l.eventTime || l.createdAt) >= today);
   }, [rawDiaperLogs]);
 
+  const medicine = React.useMemo(() => {
+    const logs = rawMedLogs || [];
+    const today = startOfToday();
+    return {
+      givenToday: logs.filter((l) => l.status === 'given' && new Date(l.time || l.createdAt) >= today).length,
+      last: logs[0] || null,
+      next: upcomingDoses(logs)[0] || null,
+    };
+  }, [rawMedLogs]);
+
+  const latestWeight = React.useMemo(() => (rawGrowthLogs || []).find((l) => l.weight) || null, [rawGrowthLogs]);
+
+  const vaccines = React.useMemo(() => {
+    const today = startOfToday();
+    const pending = (rawVaccines || []).filter((v) => !v.completed)
+      .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+    return {
+      overdue: pending.filter((v) => new Date(v.dueDate) < today).length,
+      next: pending.find((v) => new Date(v.dueDate) >= today) || null,
+      done: (rawVaccines || []).filter((v) => v.completed).length,
+      total: (rawVaccines || []).length,
+    };
+  }, [rawVaccines]);
+
   const [refreshing, setRefreshing] = React.useState(false);
 
   useEffect(() => {
@@ -108,44 +146,64 @@ export default function HomeScreen({ navigation }) {
       loadFeeding(babyId);
       loadSleep(babyId);
       loadDiaper(babyId);
+      loadMedicine(babyId);
+      loadGrowth(babyId);
+      if (baby?.dob) loadVaccines(babyId, baby.dob);
+      useMilestoneStore.getState().load(babyId);
     }
-  }, [babyId]);
+  }, [babyId, baby?.dob]);
 
   const onRefresh = async () => {
     setRefreshing(true);
     if (babyId) {
-      await Promise.all([loadFeeding(babyId), loadSleep(babyId), loadDiaper(babyId)]);
+      await Promise.all([
+        loadFeeding(babyId), loadSleep(babyId), loadDiaper(babyId),
+        loadMedicine(babyId), loadGrowth(babyId),
+        baby?.dob ? loadVaccines(babyId, baby.dob) : null,
+        useTemperatureStore.getState().load(babyId),
+        useBreathingStore.getState().load(babyId),
+        useSkinStore.getState().load(babyId),
+        useMilestoneStore.getState().load(babyId),
+      ]);
     }
     setRefreshing(false);
   };
 
   const insets = useSafeAreaInsets();
+  const health = useHealthCheck();
 
   if (!baby) return null;
 
   const feedRunning = feedSession?.babyId === babyId;
   const sleepRunning = sleepSession?.babyId === babyId;
 
-  const lastFeedText = feedRunning
-    ? 'Feeding now'
-    : lastFeed ? `Started ${formatRelative(feedTime(lastFeed))}` : 'Not logged yet';
+  const nextDoseText = (() => {
+    if (!medicine.next) return null;
+    const mins = Math.round((new Date(medicine.next.nextDoseAt).getTime() - now) / 60000);
+    if (mins <= 0) return `${medicine.next.name} due now`;
+    const h = Math.floor(mins / 60);
+    return `${medicine.next.name} in ${h ? `${h}h ${mins % 60}m` : `${mins}m`}`;
+  })();
 
-  const lastSleepText = sleepRunning
-    ? `Sleeping since ${formatRelative(sleepSession.startTime).replace(' ago', '')}`
-    : lastSleep ? `Woke up ${formatRelative(sleepEndTime(lastSleep))}` : 'Not logged yet';
-
-  const lastDiaperText = lastDiaper
-    ? formatRelative(diaperTime(lastDiaper))
-    : 'Not logged yet';
+  const vaccineSub = (() => {
+    if (vaccines.overdue) return `${vaccines.overdue} overdue`;
+    if (vaccines.next) {
+      const d = differenceInCalendarDays(new Date(vaccines.next.dueDate), new Date());
+      return d === 0 ? 'Due today' : d === 1 ? 'Due tomorrow' : `Next in ${d} days`;
+    }
+    return vaccines.total ? 'All done' : 'Add date of birth';
+  })();
 
   const liveText = feedRunning ? 'Feeding in progress' : sleepRunning ? 'Sleeping right now' : null;
   const genderIcon = baby.gender === 'girl' ? 'female' : baby.gender === 'boy' ? 'male' : 'heart';
 
-  const timeline = [
-    { icon: 'nutrition', color: COLORS.feeding, tint: C.feedingLight, label: 'Feeding', value: lastFeedText },
-    { icon: 'moon', color: COLORS.sleep, tint: C.sleepLight, label: 'Sleep', value: lastSleepText },
-    { icon: 'water', color: COLORS.diaper, tint: C.diaperLight, label: 'Diaper', value: lastDiaperText },
-  ];
+  // The four most recent care events from any feature, newest first.
+  const timeline = recentActivity({
+    babyId,
+    feeds: rawFeedLogs, sleeps: rawSleepLogs, diapers: rawDiaperLogs, medicines: rawMedLogs,
+    growth: rawGrowthLogs, vaccines: rawVaccines, temperatures: rawTemps, breathing: rawBreaths,
+    skin: rawSkin, milestones: rawMilestones, feedSession, sleepSession, limit: 4,
+  });
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
@@ -159,24 +217,47 @@ export default function HomeScreen({ navigation }) {
       >
         {/* Header */}
         <View style={styles.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.greeting, { color: C.textSecondary }]}>{getGreeting()} 👋</Text>
-            <Text style={[styles.headerTitle, { color: C.text }]} numberOfLines={1}>
-              Let's care for {baby.name}
+          <View style={styles.brandRow} accessibilityRole="header" accessibilityLabel="Cradlewell">
+            <Image source={require('../../assets/logo.png')} style={styles.brandLogo} resizeMode="contain" />
+            <Text style={[styles.wordmark, { color: C.primary }]}>
+              Cradle<Text style={styles.wordmarkLight}>well</Text>
             </Text>
           </View>
           <TouchableOpacity
-            onPress={() => navigation.navigate('Settings')}
-            style={[styles.iconBtn, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}
+            onPress={() => navigation.navigate('HealthAlerts')}
+            style={[styles.iconBtn, { backgroundColor: C.card }, SHADOW.sm]}
             accessibilityRole="button"
-            accessibilityLabel="Settings"
+            accessibilityLabel={health.alerts.length ? `Health alerts, ${health.alerts.length} new` : 'Health alerts'}
           >
-            <Ionicons name="settings-outline" size={21} color={C.text} />
+            <Ionicons name="notifications-outline" size={24} color={C.primary} />
+            {health.alerts.length ? <View style={[styles.bellDot, { borderColor: C.card }]} /> : null}
           </TouchableOpacity>
         </View>
 
+        {/* Current client: one tap to switch to another client's phone number (nurses only) */}
+        {user?.role === 'client' ? null : (
+        <TouchableOpacity
+          onPress={() => openSwitchClient(navigation)}
+          activeOpacity={0.8}
+          style={[styles.clientChip, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}
+          accessibilityRole="button"
+          accessibilityLabel={`Client ${client?.name || ''}. Switch client`}
+        >
+          <View style={[styles.clientIcon, { backgroundColor: C.primaryLight }]}>
+            <Ionicons name="person" size={14} color={C.primary} />
+          </View>
+          <Text style={[styles.clientName, { color: C.text }]} numberOfLines={1}>
+            {client?.name || 'Client'}
+          </Text>
+          <View style={[styles.switchPill, { backgroundColor: C.primaryLight }]}>
+            <Ionicons name="swap-horizontal" size={14} color={C.primary} />
+            <Text style={[styles.switchText, { color: C.primary }]}>Switch client</Text>
+          </View>
+        </TouchableOpacity>
+        )}
+
         {/* Baby hero */}
-        <GradientView colors={GRADIENTS.brand} bubbles style={[styles.hero, SHADOW.lg]}>
+        <GradientView colors={GRADIENTS.brand} style={[styles.hero, SHADOW.md]}>
           <View style={styles.heroTop}>
             <View style={styles.heroAvatarRing}>
               <View style={styles.heroAvatar}>
@@ -186,7 +267,7 @@ export default function HomeScreen({ navigation }) {
             <View style={{ flex: 1 }}>
               <Text style={styles.heroName} numberOfLines={1}>{baby.name}</Text>
               <View style={styles.heroAgeRow}>
-                <Ionicons name={genderIcon} size={13} color="rgba(255,255,255,0.9)" />
+                <Ionicons name={genderIcon} size={18} color={COLORS.white} />
                 <Text style={styles.heroAge}>{calcAge(baby.dob)}</Text>
               </View>
             </View>
@@ -198,14 +279,6 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.liveText}>{liveText}</Text>
             </View>
           ) : null}
-
-          <View style={styles.heroStats}>
-            <HeroStat value={`${todayFeeds.length}`} label="Feeds today" />
-            <View style={styles.heroDivider} />
-            <HeroStat value={todaySleepSecs > 0 ? formatDuration(todaySleepSecs) : '0m'} label="Sleep" />
-            <View style={styles.heroDivider} />
-            <HeroStat value={`${todayDiapers.length}`} label="Diapers" />
-          </View>
         </GradientView>
 
         {/* Baby Switcher */}
@@ -245,9 +318,11 @@ export default function HomeScreen({ navigation }) {
               >
                 <View style={[
                   styles.switcherAvatar,
-                  { backgroundColor: isActive ? C.primary : COLORS.gray300 },
+                  { backgroundColor: isActive ? C.primary : C.primaryLight },
                 ]}>
-                  <Text style={styles.switcherInitial}>{b.name?.[0]?.toUpperCase()}</Text>
+                  <Text style={[styles.switcherInitial, { color: isActive ? COLORS.white : C.primary }]}>
+                    {b.name?.[0]?.toUpperCase()}
+                  </Text>
                 </View>
                 <Text style={[styles.switcherName, { color: isActive ? C.primary : C.text }]}>
                   {b.name}
@@ -263,75 +338,119 @@ export default function HomeScreen({ navigation }) {
           <Text style={[styles.sectionHint, { color: C.textMuted }]}>One tap to start</Text>
         </View>
         <View style={[styles.quickRow, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
-          <QuickAction icon="nutrition" gradient={GRADIENTS.feeding} label="Feed" C={C} onPress={() => navigation.navigate('Feeding')} />
-          <QuickAction icon="moon" gradient={GRADIENTS.sleep} label="Sleep" C={C} onPress={() => navigation.navigate('Sleep')} />
-          <QuickAction icon="water" gradient={GRADIENTS.diaper} label="Diaper" C={C} onPress={() => navigation.navigate('Diaper')} />
-          <QuickAction icon="medical" gradient={GRADIENTS.medicine} label="Meds" C={C} onPress={() => navigation.navigate('Medicine')} />
+          <QuickAction icon="nutrition" gradient={QUICK_LOG_GRADIENTS.feeding} label="Feed" C={C} onPress={() => navigation.navigate('Feeding')} />
+          <QuickAction icon="moon" gradient={QUICK_LOG_GRADIENTS.sleep} label="Sleep" C={C} onPress={() => navigation.navigate('Sleep')} />
+          <QuickAction icon="water" gradient={QUICK_LOG_GRADIENTS.diaper} label="Diaper" C={C} onPress={() => navigation.navigate('Diaper')} />
+          <QuickAction icon="medical" gradient={QUICK_LOG_GRADIENTS.medicine} label="Medicine" C={C} onPress={() => navigation.navigate('Medicine')} />
+          <QuickAction icon="trending-up" gradient={QUICK_LOG_GRADIENTS.growth} label="Growth" C={C} onPress={() => navigation.navigate('Growth')} />
+          <QuickAction icon="shield-checkmark" gradient={QUICK_LOG_GRADIENTS.vaccination} label="Vaccine" C={C} onPress={() => navigation.navigate('Vaccination')} />
         </View>
 
-        {/* Today Summary */}
+        {/* Today at a glance */}
         <View style={styles.sectionHead}>
-          <Text style={[styles.sectionTitle, { color: C.text }]}>Today at a glance</Text>
+          <Text style={[styles.sectionTitle, { color: C.text }]}>Today at a Glance</Text>
         </View>
         <View style={styles.statsGrid}>
           <StatCard
-            icon="nutrition"
-            color={COLORS.feeding}
-            tint={C.feedingLight}
+            icon="nutrition-outline"
             C={C}
-            label="Feeds"
-            value={`${todayFeeds.length}`}
-            sub={feedRunning ? 'Feeding now' : lastFeed ? `Last ${formatRelative(feedTime(lastFeed))}` : 'None yet'}
+            title="Feeding"
+            sub={feedRunning ? 'Feeding now' : `${todayFeeds.length} feed${todayFeeds.length === 1 ? '' : 's'} today`}
             onPress={() => navigation.navigate('Feeding')}
           />
           <StatCard
-            icon="moon"
-            color={COLORS.sleep}
-            tint={C.sleepLight}
+            icon="moon-outline"
             C={C}
-            label="Sleep"
-            value={todaySleepSecs > 0 ? formatDuration(todaySleepSecs) : '0m'}
-            sub={sleepRunning ? 'Sleeping now' : lastSleep ? `Last ${formatRelative(sleepEndTime(lastSleep))}` : 'None yet'}
+            title="Sleep"
+            sub={sleepRunning ? 'Sleeping now' : `${todaySleepSecs > 0 ? formatDuration(todaySleepSecs) : '0m'} today`}
             onPress={() => navigation.navigate('Sleep')}
           />
           <StatCard
-            icon="water"
-            color={COLORS.diaper}
-            tint={C.diaperLight}
+            icon="water-outline"
             C={C}
-            label="Diapers"
-            value={`${todayDiapers.length}`}
-            sub={lastDiaper ? `Last ${formatRelative(diaperTime(lastDiaper))}` : 'None yet'}
+            title="Diapers"
+            sub={`${todayDiapers.length} change${todayDiapers.length === 1 ? '' : 's'} today`}
             onPress={() => navigation.navigate('Diaper')}
           />
           <StatCard
-            icon="trending-up"
-            color={COLORS.growth}
-            tint={C.growthLight}
+            icon="medkit-outline"
             C={C}
-            label="Growth"
-            value="Track"
-            sub="Tap to measure"
+            title="Medicine"
+            sub={nextDoseText || `${medicine.givenToday} dose${medicine.givenToday === 1 ? '' : 's'} today`}
+            onPress={() => navigation.navigate('Medicine')}
+          />
+          <StatCard
+            icon="bar-chart-outline"
+            C={C}
+            title="Growth"
+            sub={latestWeight ? formatWeight(latestWeight.weight, latestWeight.unit) : 'Add weight'}
             onPress={() => navigation.navigate('Growth')}
           />
+          <StatCard
+            icon="shield-checkmark-outline"
+            C={C}
+            title="Vaccines"
+            alert={vaccines.overdue > 0}
+            sub={vaccineSub}
+            onPress={() => navigation.navigate('Vaccination')}
+          />
         </View>
+
+        {/* Health alerts */}
+        <View style={styles.sectionHead}>
+          <Text style={[styles.sectionTitle, { color: C.text }]}>Health Alerts</Text>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('HealthAlerts')}
+            style={styles.viewAll}
+            accessibilityRole="button"
+            accessibilityLabel="View all health alerts"
+          >
+            <Text style={[styles.viewAllText, { color: C.primary }]}>View All</Text>
+            <Ionicons name="chevron-forward" size={16} color={C.primary} />
+          </TouchableOpacity>
+        </View>
+        {health.alerts.length ? (
+          health.alerts.slice(0, 2).map((a) => (
+            <AlertCard key={a.id} alert={a} onPress={() => navigation.navigate(a.route)} />
+          ))
+        ) : (
+          <View style={[styles.noAlerts, { backgroundColor: C.card, borderColor: C.border }]}>
+            {health.status === 'unknown'
+              ? <Ionicons name="information-circle-outline" size={22} color={C.textSecondary} />
+              : <Ionicons name="checkmark-circle-outline" size={22} color={COLORS.success} />}
+            <Text style={[styles.noAlertsText, { color: C.textSecondary }]}>
+              {health.status === 'unknown' ? 'Alerts appear here once care is logged.' : 'No alerts today.'}
+            </Text>
+          </View>
+        )}
 
         {/* Recent activity timeline */}
         <View style={styles.sectionHead}>
           <Text style={[styles.sectionTitle, { color: C.text }]}>Recent activity</Text>
         </View>
         <View style={[styles.timelineCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
-          {timeline.map((ev, i) => (
-            <View key={ev.label} style={styles.timelineRow}>
+          {timeline.length === 0 ? (
+            <Text style={[styles.timelineEmpty, { color: C.textSecondary }]}>
+              Nothing logged yet. Use Quick log to add the first entry.
+            </Text>
+          ) : timeline.map((ev, i) => (
+            <View key={ev.key} style={styles.timelineRow}>
               <View style={styles.timelineRail}>
-                <View style={[styles.timelineIcon, { backgroundColor: ev.tint }]}>
-                  <Ionicons name={ev.icon} size={17} color={ev.color} />
+                <View style={[styles.timelineIcon, { backgroundColor: C.primaryLight }]}>
+                  {ev.mci
+                    ? <MaterialCommunityIcons name={ev.mci} size={18} color={C.primary} />
+                    : <Ionicons name={ev.icon} size={18} color={C.primary} />}
                 </View>
                 {i < timeline.length - 1 && <View style={[styles.timelineLine, { backgroundColor: C.border }]} />}
               </View>
               <View style={styles.timelineInfo}>
-                <Text style={[styles.timelineLabel, { color: ev.color }]}>{ev.label}</Text>
-                <Text style={[styles.timelineValue, { color: C.text }]}>{ev.value}</Text>
+                <View style={styles.timelineTop}>
+                  <Text style={[styles.timelineLabel, { color: C.primary }]}>{ev.label}</Text>
+                  <Text style={[styles.timelineWhen, { color: C.textSecondary }]}>
+                    {ev.key.endsWith('-now') ? 'Now' : formatRelative(ev.at)}
+                  </Text>
+                </View>
+                <Text style={[styles.timelineValue, { color: C.text }]} numberOfLines={1}>{ev.value}</Text>
               </View>
             </View>
           ))}
@@ -344,13 +463,7 @@ export default function HomeScreen({ navigation }) {
           accessibilityRole="button"
           accessibilityLabel="View daily summary"
         >
-          <GradientView
-            colors={GRADIENTS.brandDeep}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            bubbles
-            style={[styles.summaryBtn, SHADOW.md]}
-          >
+          <View style={[styles.summaryBtn, { backgroundColor: C.primary }, SHADOW.md]}>
             <View style={styles.summaryIcon}>
               <Ionicons name="sparkles" size={20} color={COLORS.white} />
             </View>
@@ -359,7 +472,7 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.summarySub} numberOfLines={1}>See {baby.name}'s whole day in one place</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={COLORS.white} />
-          </GradientView>
+          </View>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -371,9 +484,23 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: SPACING.lg },
 
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.lg, gap: 12 },
-  greeting: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, marginBottom: 4 },
-  headerTitle: { fontSize: 24, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
-  iconBtn: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  brandLogo: { width: 40, height: 40 },
+  wordmark: { fontSize: 26, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  wordmarkLight: { fontWeight: FONT_WEIGHT.light },
+  iconBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  clientChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 8, paddingLeft: 8, paddingRight: 8,
+    borderRadius: RADIUS.full, borderWidth: 1, marginBottom: SPACING.md, minHeight: 48,
+  },
+  clientIcon: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  clientName: { flex: 1, fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
+  switchPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: RADIUS.full,
+  },
+  switchText: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.heavy },
 
   hero: { borderRadius: RADIUS.xxl, padding: SPACING.lg, marginBottom: SPACING.md },
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
@@ -385,22 +512,15 @@ const styles = StyleSheet.create({
   heroAvatarText: { color: COLORS.primary, fontSize: 26, fontWeight: FONT_WEIGHT.heavy },
   heroName: { color: COLORS.white, fontSize: 26, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
   heroAgeRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
-  heroAge: { color: 'rgba(255,255,255,0.92)', fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium },
+  // 19px bold counts as large text, so white passes 3:1 on the lighter end of the gradient.
+  heroAge: { color: COLORS.white, fontSize: 19, fontWeight: FONT_WEIGHT.bold },
   livePill: {
     flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start',
     marginTop: SPACING.md, paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: RADIUS.full, backgroundColor: 'rgba(255,255,255,0.22)',
+    borderRadius: RADIUS.full, backgroundColor: COLORS.white, minHeight: 32,
   },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#7CFFB2' },
-  liveText: { color: COLORS.white, fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
-  heroStats: {
-    flexDirection: 'row', alignItems: 'center', marginTop: SPACING.md,
-    backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: RADIUS.xl, paddingVertical: 14,
-  },
-  heroStat: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
-  heroStatValue: { color: COLORS.white, fontSize: 20, fontWeight: FONT_WEIGHT.heavy },
-  heroStatLabel: { color: 'rgba(255,255,255,0.85)', fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, marginTop: 2 },
-  heroDivider: { width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.3)' },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.primary },
+  liveText: { color: COLORS.primary, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
 
   switcherList: { marginBottom: SPACING.xs, flexGrow: 0 },
   switcherContent: { gap: SPACING.sm, paddingRight: SPACING.sm, paddingVertical: 4 },
@@ -411,36 +531,47 @@ const styles = StyleSheet.create({
   },
   switcherAdd: { paddingLeft: 12, borderStyle: 'dashed', backgroundColor: 'transparent' },
   switcherAvatar: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  switcherInitial: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, color: COLORS.white },
+  switcherInitial: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
   switcherName: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
 
   sectionHead: {
-    flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginTop: SPACING.md, marginBottom: 10,
   },
   sectionTitle: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
   sectionHint: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.medium },
 
   quickRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
+    flexDirection: 'row', flexWrap: 'wrap', rowGap: SPACING.md,
     paddingVertical: SPACING.md, paddingHorizontal: SPACING.sm,
     borderRadius: RADIUS.xl, borderWidth: 1,
   },
-  quickBtn: { flex: 1, alignItems: 'center', gap: 8 },
+  quickBtn: { width: '33.333%', alignItems: 'center', gap: 8 },
   quickIcon: {
     width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
     shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5,
   },
   quickLabel: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
 
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12 },
-  statCard: { width: '48%', padding: SPACING.md, borderRadius: RADIUS.xl, borderWidth: 1 },
-  statTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
-  statIcon: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  statArrow: { transform: [{ rotate: '45deg' }] },
-  statValue: { fontSize: 24, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.5 },
-  statLabel: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, marginTop: 2 },
-  statSub: { fontSize: FONT_SIZE.xs, marginTop: 4 },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 },
+  statCard: {
+    width: '31.8%', minHeight: 132, padding: 12, borderRadius: RADIUS.lg, borderWidth: 1,
+  },
+  statIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  statTitle: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.heavy },
+  statFoot: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, marginTop: 4, flex: 1 },
+  statSub: { flex: 1, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium, lineHeight: 18 },
+  bellDot: {
+    position: 'absolute', top: 10, right: 11, width: 11, height: 11, borderRadius: 6,
+    backgroundColor: COLORS.primary, borderWidth: 2,
+  },
+  viewAll: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 44 },
+  viewAllText: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
+  noAlerts: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, padding: SPACING.md,
+    borderRadius: RADIUS.xl, borderWidth: 1,
+  },
+  noAlertsText: { fontSize: FONT_SIZE.md },
 
   timelineCard: {
     borderRadius: RADIUS.xl, borderWidth: 1,
@@ -451,10 +582,10 @@ const styles = StyleSheet.create({
   timelineIcon: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   timelineLine: { width: 2, flex: 1, minHeight: 14, marginVertical: 4, borderRadius: 1 },
   timelineInfo: { flex: 1, paddingBottom: SPACING.md, paddingTop: 1 },
-  timelineLabel: {
-    fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, letterSpacing: 0.5,
-    textTransform: 'uppercase', marginBottom: 3,
-  },
+  timelineLabel: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold, marginBottom: 2 },
+  timelineTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  timelineWhen: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold },
+  timelineEmpty: { fontSize: FONT_SIZE.md, paddingBottom: SPACING.md, lineHeight: 21 },
   timelineValue: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold },
 
   summaryBtn: {
@@ -462,9 +593,9 @@ const styles = StyleSheet.create({
     padding: SPACING.md + 2, borderRadius: RADIUS.xl,
   },
   summaryIcon: {
-    width: 44, height: 44, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.22)',
+    width: 44, height: 44, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center', justifyContent: 'center',
   },
   summaryTitle: { color: COLORS.white, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.heavy },
-  summarySub: { color: 'rgba(255,255,255,0.85)', fontSize: FONT_SIZE.xs, marginTop: 2 },
+  summarySub: { color: COLORS.white, fontSize: FONT_SIZE.sm, marginTop: 2 },
 });

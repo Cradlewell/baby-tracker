@@ -9,12 +9,15 @@ import * as Haptics from 'expo-haptics';
 
 import { useBabyStore } from '../store/useBabyStore';
 import { useFeedingStore, sideSecs } from '../store/useFeedingStore';
-import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
-import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
-import GradientView from '../components/GradientView';
+import { COLORS } from '../constants/colors';
+import { FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
 import {
   formatDurationMins, formatDuration, formatRelative, parsePositiveNumber, startOfToday,
 } from '../utils/formatters';
+
+// Local palette for this screen, taken from the user's approved screenshot.
+const SHOT_LIGHT = { blue: '#006BFD', blueText: '#0058D4', tile: '#DAE9FE', hero: '#EBF3FE', card: '#EEF4FE', surface: '#FFFFFF', text: '#032049', textSecondary: '#5A6690', border: '#E1EAFB', background: '#FBFBFE' };
+const SHOT_DARK = { blue: '#006BFD', blueText: '#7FB0FF', tile: '#1C2D52', hero: '#16223D', card: '#131D33', surface: '#1A2540', text: '#EEF3FF', textSecondary: '#A9B6D6', border: '#26324F', background: '#0B1220' };
 
 // Re-renders every second while a timer is on screen. The time itself is always
 // computed from saved timestamps, so nothing is lost if renders are skipped.
@@ -31,83 +34,89 @@ function useNow(active = true) {
 const QTY_STEP = { ml: 10, oz: 0.5 };
 const fmtQty = (n) => String(Math.round(n * 10) / 10);
 
-const WHITE_SOFT = 'rgba(255,255,255,0.85)';
-
 // ─── Shared bits ──────────────────────────────────────────────────────────────
 
-// Full-width gradient call-to-action. Accessibility props live on the touchable.
-function PrimaryButton({ onPress, disabled, icon, iconSize = 22, label, accessibilityLabel, style }) {
+// Solid blue pill call-to-action. Accessibility props live on the touchable.
+function PrimaryButton({ S, onPress, disabled, icon, iconSize = 22, label, accessibilityLabel, style }) {
   return (
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled}
       activeOpacity={0.85}
-      style={style}
+      style={[styles.primaryBtn, { backgroundColor: S.blue }, style]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
     >
-      <GradientView
-        colors={GRADIENTS.feeding}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={[styles.primaryBtn, SHADOW.md, { shadowColor: COLORS.feeding }]}
-      >
-        <Ionicons name={icon} size={iconSize} color={COLORS.white} />
-        <Text style={styles.primaryBtnText}>{label}</Text>
-      </GradientView>
+      <Ionicons name={icon} size={iconSize} color={COLORS.white} />
+      <Text style={styles.primaryBtnText}>{label}</Text>
     </TouchableOpacity>
   );
 }
 
-// Small tinted header row used above forms.
-function InfoBadge({ C, icon, children, style }) {
+// Light-blue main card used by every state of the screen.
+function HeroCard({ S, style, children }) {
+  return <View style={[styles.hero, { backgroundColor: S.hero }, style]}>{children}</View>;
+}
+
+// Icon tile + heading row at the top of a form card.
+function InfoBadge({ S, icon, children, style }) {
   return (
-    <View style={[styles.infoBadge, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm, style]}>
-      <View style={[styles.infoBadgeIcon, { backgroundColor: C.feedingLight }]}>
-        <Ionicons name={icon} size={18} color={COLORS.feeding} />
+    <View style={[styles.infoBadge, style]}>
+      <View style={[styles.infoBadgeIcon, { backgroundColor: S.tile }]}>
+        <Ionicons name={icon} size={22} color={S.blue} />
       </View>
-      <Text style={[styles.infoBadgeText, { color: C.text }]}>{children}</Text>
+      <Text style={[styles.infoBadgeText, { color: S.text }]}>{children}</Text>
+    </View>
+  );
+}
+
+// Light-blue pill with an outline icon ("Total", "Bottle Feeding · …").
+function HeroPill({ S, icon, children }) {
+  return (
+    <View style={[styles.heroPill, { backgroundColor: S.tile }]}>
+      <Ionicons name={icon} size={18} color={S.text} />
+      <Text style={[styles.heroPillText, { color: S.text }]}>{children}</Text>
     </View>
   );
 }
 
 // ─── Breast Side Picker ───────────────────────────────────────────────────────
 
-function BreastSidePicker({ C, onSelect }) {
+function BreastSidePicker({ S, onSelect }) {
   return (
-    <View style={styles.sidePickerWrap}>
-      <InfoBadge C={C} icon="heart">Breastfeed — Which side to start?</InfoBadge>
+    <HeroCard S={S}>
+      <InfoBadge S={S} icon="heart-outline">Breastfeed — Which side to start?</InfoBadge>
       <View style={styles.sidesRow}>
         {['left', 'right'].map((side) => (
           <TouchableOpacity
             key={side}
             onPress={() => onSelect(side)}
-            style={[styles.pickCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}
+            style={[styles.pickCard, { backgroundColor: S.surface, borderColor: S.border }]}
             accessibilityRole="button"
             accessibilityLabel={`Start from ${side} breast`}
           >
-            <View style={[styles.pickIcon, { backgroundColor: C.feedingLight }]}>
-              <Ionicons name={side === 'left' ? 'arrow-back-circle' : 'arrow-forward-circle'} size={30} color={COLORS.feeding} />
+            <View style={[styles.pickIcon, { backgroundColor: S.tile }]}>
+              <Ionicons name={side === 'left' ? 'arrow-back-circle-outline' : 'arrow-forward-circle-outline'} size={28} color={S.blue} />
             </View>
-            <Text style={[styles.pickLabel, { color: COLORS.feeding }]}>{side.toUpperCase()}</Text>
-            <Text style={[styles.sidePickerHint, { color: C.textMuted }]}>Start timer on {side}</Text>
+            <Text style={[styles.pickLabel, { color: S.text }]}>{side.toUpperCase()}</Text>
+            <Text style={[styles.sidePickerHint, { color: S.textSecondary }]}>Start timer on {side}</Text>
           </TouchableOpacity>
         ))}
       </View>
-    </View>
+    </HeroCard>
   );
 }
 
 // ─── Breastfeeding Live Timer ─────────────────────────────────────────────────
 
-function BreastfeedTimer({ C, onEnd }) {
+function BreastfeedTimer({ S, onEnd }) {
   const session = useFeedingStore((s) => s.session);
-  const { switchSide, pauseSession, resumeSession, toggleBurped, endSession } = useFeedingStore.getState();
+  const { switchSide, pauseSession, resumeSession, endSession } = useFeedingStore.getState();
   const now = useNow(!!session && !session.paused);
   const [ending, setEnding] = useState(false);
 
   if (!session) return null;
-  const { activeSide, paused, burped } = session;
+  const { activeSide, paused } = session;
   const leftSecs = sideSecs(session, 'left', now);
   const rightSecs = sideSecs(session, 'right', now);
 
@@ -129,111 +138,93 @@ function BreastfeedTimer({ C, onEnd }) {
     return (
       <TouchableOpacity
         onPress={() => !active && handleSwitch()}
-        style={[styles.heroSide, active && styles.heroSideActive]}
+        style={[
+          styles.sideCard,
+          { backgroundColor: active ? S.surface : S.card, borderColor: S.border },
+          active && SHADOW.sm,
+        ]}
         accessibilityRole="button"
         accessibilityLabel={`${side} side`}
         accessibilityState={{ selected: active }}
       >
-        <Ionicons
-          name={active ? 'radio-button-on' : 'radio-button-off'}
-          size={18}
-          color={active ? COLORS.feeding : WHITE_SOFT}
-        />
-        <Text style={[styles.sideLabel, { color: active ? COLORS.feeding : WHITE_SOFT }]}>
+        <Ionicons name="radio-button-off" size={24} color={S.text} />
+        <Text style={[styles.sideLabel, { color: S.text }]}>
           {side.toUpperCase()}
         </Text>
-        <Text style={[styles.sideTime, { color: active ? COLORS.feeding : COLORS.white }]}>
+        <Text style={[styles.sideTime, { color: S.text }]}>
           {formatDurationMins(secs)}
         </Text>
-        {active && !paused && <View style={styles.activeDot} />}
+        {active && <View style={[styles.activeDot, { backgroundColor: S.blue }]} />}
       </TouchableOpacity>
     );
   };
 
   return (
-    <GradientView colors={GRADIENTS.feeding} bubbles style={[styles.hero, SHADOW.lg]}>
-      <View style={styles.heroPill}>
-        <Ionicons name="time-outline" size={14} color={COLORS.white} />
-        <Text style={styles.heroPillText}>{paused ? 'Paused' : 'Total'}</Text>
-      </View>
-      <Text style={styles.heroTime}>{formatDurationMins(leftSecs + rightSecs)}</Text>
+    <HeroCard S={S}>
+      <HeroPill S={S} icon="time-outline">{paused ? 'Paused' : 'Total'}</HeroPill>
+      <Text style={[styles.heroTime, { color: S.text }]}>{formatDurationMins(leftSecs + rightSecs)}</Text>
 
       <View style={styles.sidesRow}>
         {renderSide('left', leftSecs)}
         <TouchableOpacity
           onPress={handleSwitch}
-          style={styles.switchBtn}
+          style={[styles.switchBtn, { backgroundColor: S.tile }]}
           accessibilityRole="button"
           accessibilityLabel="Switch side"
         >
-          <Ionicons name="swap-horizontal" size={22} color={COLORS.white} />
+          <Ionicons name="swap-horizontal" size={26} color={S.blue} />
         </TouchableOpacity>
         {renderSide('right', rightSecs)}
       </View>
 
-      <Text style={[styles.switchHint, { color: WHITE_SOFT }]}>
+      <Text style={[styles.switchHint, { color: S.textSecondary }]}>
         Tap the other side to switch · The timer keeps running if you lock your phone
       </Text>
-
-      <TouchableOpacity
-        onPress={() => { Haptics.selectionAsync(); toggleBurped(); }}
-        style={styles.heroRow}
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: burped }}
-        accessibilityLabel="Burping completed"
-      >
-        <Ionicons
-          name={burped ? 'checkmark-circle' : 'ellipse-outline'}
-          size={22}
-          color={burped ? COLORS.white : WHITE_SOFT}
-        />
-        <Text style={styles.heroRowText}>Burping completed</Text>
-      </TouchableOpacity>
 
       <View style={styles.controlRow}>
         <TouchableOpacity
           onPress={() => { Haptics.selectionAsync(); paused ? resumeSession() : pauseSession(); }}
-          style={styles.heroGhostBtn}
+          style={[styles.secondaryBtn, { backgroundColor: S.surface, borderColor: S.tile }]}
           accessibilityRole="button"
           accessibilityLabel={paused ? 'Resume' : 'Pause'}
         >
-          <Ionicons name={paused ? 'play' : 'pause'} size={20} color={COLORS.white} />
-          <Text style={styles.heroGhostText}>{paused ? 'Resume' : 'Pause'}</Text>
+          <Ionicons name={paused ? 'play-outline' : 'pause-outline'} size={22} color={S.blueText} />
+          <Text style={[styles.secondaryBtnText, { color: S.blueText }]}>{paused ? 'Resume' : 'Pause'}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={handleEnd}
           disabled={ending}
-          style={[styles.heroSolidBtn, { opacity: ending ? 0.6 : 1 }]}
+          style={[styles.primaryBtn, styles.controlPrimary, { backgroundColor: S.blue, opacity: ending ? 0.6 : 1 }]}
           accessibilityRole="button"
           accessibilityLabel="End feeding"
         >
-          <Ionicons name="stop-circle" size={22} color={COLORS.feeding} />
-          <Text style={styles.heroSolidText}>End Feeding</Text>
+          <Ionicons name="stop-circle-outline" size={24} color={COLORS.white} />
+          <Text style={styles.primaryBtnText}>End Feeding</Text>
         </TouchableOpacity>
       </View>
-    </GradientView>
+    </HeroCard>
   );
 }
 
 // ─── Quantity stepper (shared by bottle forms) ───────────────────────────────
 
-function QtyButton({ C, icon, onPress, label }) {
+function QtyButton({ S, icon, onPress, label }) {
   return (
     <TouchableOpacity
       onPress={onPress}
-      style={[styles.qtyBtn, { backgroundColor: C.feedingLight }]}
+      style={[styles.qtyBtn, { backgroundColor: S.tile }]}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Ionicons name={icon} size={22} color={COLORS.feeding} />
+      <Ionicons name={icon} size={24} color={S.text} />
     </TouchableOpacity>
   );
 }
 
 // ─── Bottle Prepare Form ──────────────────────────────────────────────────────
 
-function BottlePrepForm({ C, milkType, setMilkType, unit, setUnit, preparedQty, setPreparedQty, onStart }) {
+function BottlePrepForm({ S, milkType, setMilkType, unit, setUnit, preparedQty, setPreparedQty, onStart }) {
   const step = QTY_STEP[unit];
   const qty = parsePositiveNumber(preparedQty);
   const changeUnit = (u) => {
@@ -244,10 +235,10 @@ function BottlePrepForm({ C, milkType, setMilkType, unit, setUnit, preparedQty, 
   };
 
   return (
-    <View style={styles.bottleForm}>
-      <InfoBadge C={C} icon="beaker">How much did you prepare?</InfoBadge>
+    <HeroCard S={S}>
+      <InfoBadge S={S} icon="beaker-outline">How much did you prepare?</InfoBadge>
 
-      <Text style={[styles.formSection, { color: C.textSecondary }]}>MILK TYPE</Text>
+      <Text style={[styles.formSection, { color: S.textSecondary }]}>MILK TYPE</Text>
       <View style={styles.pillRow3}>
         {[
           { value: 'formula', label: 'Formula' },
@@ -261,13 +252,13 @@ function BottlePrepForm({ C, milkType, setMilkType, unit, setUnit, preparedQty, 
               onPress={() => setMilkType(t.value)}
               style={[
                 styles.typePill,
-                { backgroundColor: C.card, borderColor: C.border },
-                selected && { backgroundColor: C.feedingLight, borderColor: COLORS.feeding },
+                { backgroundColor: S.surface, borderColor: S.border },
+                selected && { backgroundColor: S.tile, borderColor: S.blue },
               ]}
               accessibilityRole="radio"
               accessibilityState={{ selected }}
             >
-              <Text style={[styles.typePillText, { color: selected ? COLORS.feeding : C.textSecondary }, selected && styles.typePillTextActive]}>
+              <Text style={[styles.typePillText, { color: selected ? S.blueText : S.text }, selected && styles.typePillTextActive]}>
                 {t.label}
               </Text>
             </TouchableOpacity>
@@ -275,16 +266,16 @@ function BottlePrepForm({ C, milkType, setMilkType, unit, setUnit, preparedQty, 
         })}
       </View>
 
-      <Text style={[styles.formSection, { color: C.textSecondary, marginTop: SPACING.sm }]}>PREPARED QUANTITY</Text>
-      <View style={[styles.qtyCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
+      <Text style={[styles.formSection, { color: S.textSecondary, marginTop: SPACING.sm }]}>PREPARED QUANTITY</Text>
+      <View style={[styles.qtyCard, { backgroundColor: S.surface, borderColor: S.border }]}>
         <QtyButton
-          C={C}
+          S={S}
           icon="remove"
           label="Decrease quantity"
           onPress={() => setPreparedQty(fmtQty(Math.max(0, (qty || 0) - step)))}
         />
         <TextInput
-          style={[styles.qtyInput, { color: C.text }]}
+          style={[styles.qtyInput, { color: S.text }]}
           value={preparedQty}
           onChangeText={setPreparedQty}
           keyboardType="decimal-pad"
@@ -292,92 +283,90 @@ function BottlePrepForm({ C, milkType, setMilkType, unit, setUnit, preparedQty, 
           accessibilityLabel="Prepared quantity"
         />
         <QtyButton
-          C={C}
+          S={S}
           icon="add"
           label="Increase quantity"
           onPress={() => setPreparedQty(fmtQty((qty || 0) + step))}
         />
-        <View style={[styles.unitToggle, { backgroundColor: C.background, borderColor: C.border }]}>
+        <View style={[styles.unitToggle, { backgroundColor: S.card, borderColor: S.border }]}>
           {['ml', 'oz'].map((u) => (
             <TouchableOpacity
               key={u}
               onPress={() => changeUnit(u)}
-              style={[styles.unitBtn, unit === u && styles.unitBtnActive]}
+              style={[styles.unitBtn, unit === u && { backgroundColor: S.blue }]}
               accessibilityRole="radio"
               accessibilityState={{ selected: unit === u }}
             >
-              <Text style={[styles.unitText, { color: C.textSecondary }, unit === u && styles.unitTextActive]}>{u}</Text>
+              <Text style={[styles.unitText, { color: S.textSecondary }, unit === u && styles.unitTextActive]}>{u}</Text>
             </TouchableOpacity>
           ))}
         </View>
       </View>
 
       <PrimaryButton
+        S={S}
         onPress={onStart}
         disabled={!qty}
-        icon="timer"
+        icon="timer-outline"
         label="Start Feeding Timer"
         accessibilityLabel="Start feeding timer"
         style={{ marginTop: SPACING.sm, opacity: qty ? 1 : 0.5 }}
       />
-    </View>
+    </HeroCard>
   );
 }
 
 // ─── Bottle Timing View ───────────────────────────────────────────────────────
 
-function BottleTimingView({ C, session }) {
+function BottleTimingView({ S, session }) {
   const { pauseSession, resumeSession, finishTiming } = useFeedingStore.getState();
   const now = useNow(!session.paused);
   const elapsed = sideSecs(session, 'left', now);
 
   return (
-    <GradientView colors={GRADIENTS.feeding} bubbles style={[styles.hero, SHADOW.lg]}>
-      <View style={styles.heroPill}>
-        <Ionicons name="beaker" size={14} color={COLORS.white} />
-        <Text style={styles.heroPillText}>
-          Bottle Feeding · {session.preparedQty} {session.unit} prepared
-        </Text>
-      </View>
+    <HeroCard S={S}>
+      <HeroPill S={S} icon="beaker-outline">
+        Bottle Feeding · {session.preparedQty} {session.unit} prepared
+      </HeroPill>
 
       <View style={styles.heroCenter}>
-        <Text style={styles.heroCaption}>TIME ELAPSED</Text>
-        <Text style={[styles.heroTime, { fontSize: 56 }]}>
+        <Text style={[styles.heroCaption, { color: S.textSecondary }]}>TIME ELAPSED</Text>
+        <Text style={[styles.heroTime, { color: S.text }]}>
           {formatDurationMins(elapsed)}
         </Text>
         {session.paused && (
-          <Text style={[styles.switchHint, { color: WHITE_SOFT, marginTop: 4 }]}>Paused</Text>
+          <Text style={[styles.switchHint, { color: S.textSecondary, marginTop: 4 }]}>Paused</Text>
         )}
       </View>
 
       <View style={styles.controlRow}>
         <TouchableOpacity
           onPress={() => { Haptics.selectionAsync(); session.paused ? resumeSession() : pauseSession(); }}
-          style={styles.heroGhostBtn}
+          style={[styles.secondaryBtn, { backgroundColor: S.surface, borderColor: S.tile }]}
           accessibilityRole="button"
           accessibilityLabel={session.paused ? 'Resume' : 'Pause'}
         >
-          <Ionicons name={session.paused ? 'play' : 'pause'} size={20} color={COLORS.white} />
-          <Text style={styles.heroGhostText}>{session.paused ? 'Resume' : 'Pause'}</Text>
+          <Ionicons name={session.paused ? 'play-outline' : 'pause-outline'} size={22} color={S.blueText} />
+          <Text style={[styles.secondaryBtnText, { color: S.blueText }]}>{session.paused ? 'Resume' : 'Pause'}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); finishTiming(); }}
-          style={styles.heroSolidBtn}
+          style={[styles.primaryBtn, styles.controlPrimary, { backgroundColor: S.blue }]}
           accessibilityRole="button"
           accessibilityLabel="Done feeding"
         >
-          <Ionicons name="checkmark-circle" size={22} color={COLORS.feeding} />
-          <Text style={styles.heroSolidText}>Done Feeding</Text>
+          <Ionicons name="checkmark-circle-outline" size={24} color={COLORS.white} />
+          <Text style={styles.primaryBtnText}>Done Feeding</Text>
         </TouchableOpacity>
       </View>
-    </GradientView>
+    </HeroCard>
   );
 }
 
 // ─── Bottle Finish Form ───────────────────────────────────────────────────────
 
-function BottleFinishForm({ C, session, consumedQty, setConsumedQty, onSave, saving }) {
+function BottleFinishForm({ S, session, consumedQty, setConsumedQty, onSave, saving }) {
   const duration = sideSecs(session, 'left');
   const maxQty = session.preparedQty || 0;
   const unit = session.unit || 'ml';
@@ -394,62 +383,63 @@ function BottleFinishForm({ C, session, consumedQty, setConsumedQty, onSave, sav
   };
 
   return (
-    <View style={styles.bottleForm}>
-      <InfoBadge C={C} icon="time-outline">
+    <HeroCard S={S}>
+      <InfoBadge S={S} icon="time-outline">
         Duration: {formatDurationMins(duration)} · Prepared: {maxQty} {unit}
       </InfoBadge>
 
       <View>
-        <Text style={[styles.formSection, { color: C.textSecondary }]}>HOW MUCH DID BABY CONSUME? ({unit})</Text>
-        <Text style={[styles.switchHint, { color: C.textMuted, textAlign: 'left', marginTop: 4 }]}>
+        <Text style={[styles.formSection, { color: S.textSecondary }]}>HOW MUCH DID BABY CONSUME? ({unit})</Text>
+        <Text style={[styles.switchHint, { color: S.textSecondary, textAlign: 'left', marginTop: 4 }]}>
           Max: {maxQty} {unit}
         </Text>
       </View>
-      <View style={[styles.qtyCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
-        <QtyButton C={C} icon="remove" label="Decrease consumed" onPress={() => stepConsumed(-step)} />
+      <View style={[styles.qtyCard, { backgroundColor: S.surface, borderColor: S.border }]}>
+        <QtyButton S={S} icon="remove" label="Decrease consumed" onPress={() => stepConsumed(-step)} />
         <TextInput
-          style={[styles.qtyInput, { color: C.text }]}
+          style={[styles.qtyInput, { color: S.text }]}
           value={consumedQty}
           onChangeText={handleConsumedChange}
           keyboardType="decimal-pad"
           textAlign="center"
           accessibilityLabel="Consumed quantity"
         />
-        <QtyButton C={C} icon="add" label="Increase consumed" onPress={() => stepConsumed(step)} />
-        <Text style={[styles.unitLabel, { color: C.textSecondary }]}>{unit}</Text>
+        <QtyButton S={S} icon="add" label="Increase consumed" onPress={() => stepConsumed(step)} />
+        <Text style={[styles.unitLabel, { color: S.textSecondary }]}>{unit}</Text>
       </View>
 
-      <View style={[styles.prepSummary, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
+      <View style={[styles.prepSummary, { backgroundColor: S.surface, borderColor: S.border }]}>
         {[
-          ['Prepared', `${maxQty} ${unit}`, C.text],
-          ['Consumed', `${consumedQty || 0} ${unit}`, COLORS.feeding],
-          ['Duration', formatDurationMins(duration), C.textMuted],
+          ['Prepared', `${maxQty} ${unit}`, S.text],
+          ['Consumed', `${consumedQty || 0} ${unit}`, S.blueText],
+          ['Duration', formatDurationMins(duration), S.textSecondary],
         ].map(([label, value, color], i) => (
           <View
             key={label}
-            style={[styles.prepSummaryRow, i > 0 && { borderTopWidth: 1, borderTopColor: C.border }]}
+            style={[styles.prepSummaryRow, i > 0 && { borderTopWidth: 1, borderTopColor: S.border }]}
           >
-            <Text style={[styles.prepSummaryLabel, { color: C.textSecondary }]}>{label}</Text>
+            <Text style={[styles.prepSummaryLabel, { color: S.textSecondary }]}>{label}</Text>
             <Text style={[styles.prepSummaryVal, { color }]}>{value}</Text>
           </View>
         ))}
       </View>
 
       <PrimaryButton
+        S={S}
         onPress={onSave}
         disabled={saving}
-        icon="checkmark-circle"
+        icon="checkmark-circle-outline"
         label="Save Feed"
         accessibilityLabel="Save bottle feed"
         style={{ marginTop: SPACING.sm, opacity: saving ? 0.6 : 1 }}
       />
-    </View>
+    </HeroCard>
   );
 }
 
 // ─── History Item ─────────────────────────────────────────────────────────────
 
-function FeedLogItem({ log, C }) {
+function FeedLogItem({ log, S }) {
   const isBreast = log.type === 'breast';
   let subText = '';
   if (isBreast) {
@@ -466,28 +456,28 @@ function FeedLogItem({ log, C }) {
       : `${consumed || 0} ${unit}${dur}`;
   }
   return (
-    <View style={[styles.logItem, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
-      <View style={[styles.logIcon, { backgroundColor: C.feedingLight }]}>
-        <Ionicons name={isBreast ? 'heart' : 'beaker'} size={18} color={COLORS.feeding} />
+    <View style={[styles.logItem, { backgroundColor: S.card }]}>
+      <View style={[styles.logIcon, { backgroundColor: S.surface, borderColor: S.border }]}>
+        <Ionicons name={isBreast ? 'heart-outline' : 'beaker-outline'} size={24} color={S.text} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={[styles.logTitle, { color: C.text }]}>
+        <Text style={[styles.logTitle, { color: S.text }]}>
           {isBreast ? 'Breastfeed' : 'Bottle Feed'}
         </Text>
-        <Text style={[styles.logSub, { color: C.textSecondary }]}>{subText}</Text>
+        <Text style={[styles.logSub, { color: S.text }]}>{subText}</Text>
       </View>
-      <Text style={[styles.logTime, { color: C.textMuted }]}>{formatRelative(log.startTime || log.createdAt)}</Text>
+      <Text style={[styles.logTime, { color: S.textSecondary }]}>{formatRelative(log.startTime || log.createdAt)}</Text>
     </View>
   );
 }
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
-export default function FeedingScreen() {
+export default function FeedingScreen({ navigation }) {
   const { getActiveBaby, darkMode, babies, setActiveBaby } = useBabyStore();
   const baby = getActiveBaby();
   const babyId = baby?.id;
-  const C = darkMode ? DARK_COLORS : COLORS;
+  const S = darkMode ? SHOT_DARK : SHOT_LIGHT;
   const insets = useSafeAreaInsets();
 
   const session = useFeedingStore((s) => s.session);
@@ -592,7 +582,7 @@ export default function FeedingScreen() {
   const todayCount = logs.filter((l) => new Date(l.startTime || l.createdAt) >= todayStart).length;
 
   return (
-    <View style={[styles.container, { backgroundColor: C.background }]}>
+    <View style={[styles.container, { backgroundColor: S.background }]}>
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
@@ -603,54 +593,61 @@ export default function FeedingScreen() {
       >
         {/* Header */}
         <View style={styles.screenHeader}>
-          <GradientView colors={GRADIENTS.feeding} style={[styles.headerIcon, { shadowColor: COLORS.feeding }]}>
-            <Ionicons name="nutrition" size={24} color={COLORS.white} />
-          </GradientView>
+          <View style={[styles.headerIcon, { backgroundColor: S.tile }]}>
+            <Ionicons name="nutrition-outline" size={30} color={S.blue} />
+          </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.screenTitle, { color: C.text }]}>Feeding</Text>
-            <Text style={[styles.screenSub, { color: C.textSecondary }]}>
+            <Text style={[styles.screenTitle, { color: S.text }]}>Feeding</Text>
+            <Text style={[styles.screenSub, { color: S.textSecondary }]}>
               {logs.length > 0 ? `${todayCount} feed${todayCount === 1 ? '' : 's'} today` : 'Start first feed'}
             </Text>
           </View>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Settings')}
+            style={[styles.headerBtn, { backgroundColor: S.tile }]}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+          >
+            <Ionicons name="settings-outline" size={24} color={S.blue} />
+          </TouchableOpacity>
         </View>
 
         {showSuccess && (
-          <View style={[styles.successToast, { backgroundColor: C.medicineLight, borderColor: COLORS.success + '40' }]}>
-            <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
-            <Text style={[styles.successText, { color: COLORS.success }]}>Feed logged!</Text>
+          <View style={[styles.successToast, { backgroundColor: S.card, borderColor: COLORS.success + '40' }]}>
+            <Ionicons name="checkmark-circle-outline" size={22} color={COLORS.success} />
+            <Text style={[styles.successText, { color: S.text }]}>Feed logged!</Text>
           </View>
         )}
 
         {/* Timer running for a different baby */}
         {otherBabySession && (
-          <View style={[extra.otherBaby, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
-            <View style={[extra.otherBabyIcon, { backgroundColor: C.feedingLight }]}>
-              <Ionicons name="time-outline" size={20} color={COLORS.feeding} />
+          <View style={[styles.otherBaby, { backgroundColor: S.hero }]}>
+            <View style={[styles.otherBabyIcon, { backgroundColor: S.tile }]}>
+              <Ionicons name="time-outline" size={22} color={S.blue} />
             </View>
-            <Text style={[extra.otherBabyText, { color: C.text }]}>
+            <Text style={[styles.otherBabyText, { color: S.text }]}>
               A feeding timer is running for {otherBabyName}.
             </Text>
             <TouchableOpacity
               onPress={() => setActiveBaby(otherBabySession.babyId)}
               activeOpacity={0.85}
+              style={[styles.otherBabyBtn, { backgroundColor: S.blue }]}
               accessibilityRole="button"
               accessibilityLabel={`Switch to ${otherBabyName}`}
             >
-              <GradientView colors={GRADIENTS.feeding} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={extra.otherBabyBtn}>
-                <Text style={extra.otherBabyBtnText}>Open</Text>
-              </GradientView>
+              <Text style={styles.otherBabyBtnText}>Open</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {/* Start screen */}
         {showStartScreen && (
-          <>
-            <Text style={[styles.sectionTitle, { color: C.text }]}>Feeding type</Text>
+          <HeroCard S={S}>
+            <Text style={[styles.cardTitle, { color: S.text }]}>Feeding type</Text>
             <View style={styles.typeGrid}>
               {[
-                { value: 'breast', label: 'Breastfeed', icon: 'heart', sub: 'Choose side & timer' },
-                { value: 'bottle', label: 'Bottle Feed', icon: 'beaker', sub: 'Qty + timer + log' },
+                { value: 'breast', label: 'Breastfeed', icon: 'heart-outline', sub: 'Choose side & timer' },
+                { value: 'bottle', label: 'Bottle Feed', icon: 'beaker-outline', sub: 'Qty + timer + log' },
               ].map((t) => {
                 const selected = feedType === t.value;
                 return (
@@ -659,31 +656,22 @@ export default function FeedingScreen() {
                     onPress={() => setFeedType(t.value)}
                     style={[
                       styles.typeCard,
-                      { backgroundColor: C.card, borderColor: C.border },
-                      SHADOW.sm,
-                      selected && { backgroundColor: C.feedingLight, borderColor: COLORS.feeding },
+                      { backgroundColor: S.card, borderColor: S.border },
+                      selected && [{ backgroundColor: S.surface, borderColor: S.blue }, SHADOW.sm],
                     ]}
                     accessibilityRole="radio"
                     accessibilityState={{ selected }}
                     accessibilityLabel={t.label}
                   >
-                    {selected ? (
-                      <GradientView colors={GRADIENTS.feeding} style={styles.typeIcon}>
-                        <Ionicons name={t.icon} size={22} color={COLORS.white} />
-                      </GradientView>
-                    ) : (
-                      <View style={[styles.typeIcon, { backgroundColor: C.feedingLight }]}>
-                        <Ionicons name={t.icon} size={22} color={COLORS.feeding} />
-                      </View>
-                    )}
-                    <Text style={[styles.typeLabel, { color: selected ? COLORS.feeding : C.text }]}>
+                    <View style={[styles.typeIcon, { backgroundColor: S.tile }]}>
+                      <Ionicons name={t.icon} size={24} color={S.blue} />
+                    </View>
+                    <Text style={[styles.typeLabel, { color: S.text }]}>
                       {t.label}
                     </Text>
-                    <Text style={[styles.typeSub, { color: C.textMuted }]}>{t.sub}</Text>
+                    <Text style={[styles.typeSub, { color: S.textSecondary }]}>{t.sub}</Text>
                     {selected && (
-                      <View style={styles.typeCheck}>
-                        <Ionicons name="checkmark-circle" size={20} color={COLORS.feeding} />
-                      </View>
+                      <View style={[styles.activeDot, { backgroundColor: S.blue }]} />
                     )}
                   </TouchableOpacity>
                 );
@@ -691,22 +679,23 @@ export default function FeedingScreen() {
             </View>
 
             <PrimaryButton
+              S={S}
               onPress={handleStart}
-              icon="play-circle"
+              icon="play-circle-outline"
               iconSize={24}
               label="Start Feeding"
               accessibilityLabel="Start feeding"
             />
-          </>
+          </HeroCard>
         )}
 
-        {showBreastPicker && <BreastSidePicker C={C} onSelect={handleBreastSideSelect} />}
+        {showBreastPicker && <BreastSidePicker S={S} onSelect={handleBreastSideSelect} />}
 
-        {showBreastTimer && <BreastfeedTimer C={C} onEnd={showSaved} />}
+        {showBreastTimer && <BreastfeedTimer S={S} onEnd={showSaved} />}
 
         {showBottlePrepare && (
           <BottlePrepForm
-            C={C}
+            S={S}
             milkType={milkType}
             setMilkType={setMilkType}
             unit={unit}
@@ -717,11 +706,11 @@ export default function FeedingScreen() {
           />
         )}
 
-        {showBottleTiming && <BottleTimingView C={C} session={mySession} />}
+        {showBottleTiming && <BottleTimingView S={S} session={mySession} />}
 
         {showBottleFinish && (
           <BottleFinishForm
-            C={C}
+            S={S}
             session={mySession}
             consumedQty={consumedQty}
             setConsumedQty={setConsumedQty}
@@ -733,22 +722,22 @@ export default function FeedingScreen() {
         {showCancel && (
           <TouchableOpacity
             onPress={handleCancel}
-            style={[styles.cancelBtn, { backgroundColor: C.card, borderColor: C.border }]}
+            style={[styles.cancelBtn, { backgroundColor: S.surface, borderColor: S.border }]}
             accessibilityRole="button"
             accessibilityLabel="Cancel session"
           >
-            <Text style={[styles.cancelText, { color: C.textSecondary }]}>Cancel</Text>
+            <Text style={[styles.cancelText, { color: S.text }]}>Cancel</Text>
           </TouchableOpacity>
         )}
 
         {/* History */}
         {logs.length > 0 && (
           <>
-            <Text style={[styles.sectionTitle, { color: C.text, marginTop: SPACING.xl }]}>
+            <Text style={[styles.sectionTitle, { color: S.text, marginTop: SPACING.xl }]}>
               Recent
             </Text>
             {logs.slice(0, 10).map((log) => (
-              <FeedLogItem key={log.id} log={log} C={C} />
+              <FeedLogItem key={log.id} log={log} S={S} />
             ))}
           </>
         )}
@@ -757,169 +746,141 @@ export default function FeedingScreen() {
   );
 }
 
-const extra = StyleSheet.create({
-  otherBaby: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    padding: 12, borderRadius: RADIUS.xl, borderWidth: 1, marginBottom: SPACING.md,
-  },
-  otherBabyIcon: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  otherBabyText: { flex: 1, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold },
-  otherBabyBtn: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: RADIUS.full },
-  otherBabyBtnText: { color: COLORS.white, fontWeight: FONT_WEIGHT.heavy, fontSize: FONT_SIZE.sm },
-});
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { paddingHorizontal: SPACING.lg },
-  screenHeader: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: SPACING.lg },
-  headerIcon: {
-    width: 52, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
-    shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5,
-  },
-  screenTitle: { fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.8 },
-  screenSub: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
+
+  // Header
+  screenHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: SPACING.lg },
+  headerIcon: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  screenTitle: { fontSize: 28, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  screenSub: { fontSize: 15, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
+  headerBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
 
   successToast: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12,
-    borderRadius: RADIUS.lg, borderWidth: 1, marginBottom: SPACING.md,
+    flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, minHeight: 48,
+    borderRadius: RADIUS.full, borderWidth: 1, marginBottom: SPACING.md,
   },
-  successText: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
+  successText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold },
 
-  sectionTitle: {
-    fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3, marginBottom: 12,
+  sectionTitle: { fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3, marginBottom: 12 },
+  cardTitle: { fontSize: 18, fontWeight: FONT_WEIGHT.heavy },
+
+  // Main light-blue card (every state)
+  hero: { borderRadius: 28, padding: 20, gap: SPACING.md },
+  heroPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start',
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS.full, maxWidth: '100%',
   },
+  heroPillText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold, flexShrink: 1 },
+  heroTime: { fontSize: 64, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -2, fontVariant: ['tabular-nums'] },
+  heroCenter: { alignItems: 'center', paddingVertical: SPACING.sm },
+  heroCaption: { fontSize: 13, fontWeight: FONT_WEIGHT.bold, letterSpacing: 1 },
 
   // Start screen
-  typeGrid: { flexDirection: 'row', gap: 12, marginBottom: SPACING.lg },
+  typeGrid: { flexDirection: 'row', gap: 12 },
   typeCard: {
     flex: 1, alignItems: 'flex-start', padding: SPACING.md,
-    borderRadius: RADIUS.xl, borderWidth: 1.5, gap: 4, minHeight: 130,
+    borderRadius: 24, borderWidth: 1, gap: 4, minHeight: 130,
   },
-  typeIcon: { width: 44, height: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  typeCheck: { position: 'absolute', top: 12, right: 12 },
-  typeLabel: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.heavy },
-  typeSub: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.medium },
+  typeIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  typeLabel: { fontSize: 17, fontWeight: FONT_WEIGHT.heavy },
+  typeSub: { fontSize: 13, fontWeight: FONT_WEIGHT.medium },
 
+  // Buttons
   primaryBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 18, paddingHorizontal: SPACING.lg, borderRadius: RADIUS.full, gap: 10,
+    minHeight: 56, paddingHorizontal: SPACING.lg, borderRadius: RADIUS.full, gap: 10,
   },
-  primaryBtnText: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.2 },
-
-  // Info badge above forms
-  infoBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    padding: 12, borderRadius: RADIUS.xl, borderWidth: 1,
-  },
-  infoBadgeIcon: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  infoBadgeText: { flex: 1, fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
-
-  // Gradient hero (live timers)
-  hero: { borderRadius: RADIUS.xxl, padding: SPACING.lg, gap: SPACING.md },
-  heroPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.full,
-    backgroundColor: 'rgba(255,255,255,0.22)', maxWidth: '100%',
-  },
-  heroPillText: { color: COLORS.white, fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, flexShrink: 1 },
-  heroTime: {
-    color: COLORS.white, fontSize: 48, fontWeight: FONT_WEIGHT.heavy,
-    letterSpacing: -1.5, fontVariant: ['tabular-nums'],
-  },
-  heroCenter: { alignItems: 'center', paddingVertical: SPACING.sm },
-  heroCaption: { color: WHITE_SOFT, fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, letterSpacing: 1 },
-
-  sidesRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  heroSide: {
-    flex: 1, alignItems: 'center', padding: SPACING.md, gap: 6, minHeight: 110,
-    borderRadius: RADIUS.xl, borderWidth: 1.5,
-    backgroundColor: 'rgba(255,255,255,0.18)', borderColor: 'rgba(255,255,255,0.3)',
-  },
-  heroSideActive: { backgroundColor: COLORS.white, borderColor: COLORS.white },
-  sideLabel: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.heavy, letterSpacing: 1 },
-  sideTime: { fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
-  activeDot: {
-    position: 'absolute', top: 10, right: 10,
-    width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.feeding,
-  },
-  switchBtn: {
-    width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.22)',
-  },
-  switchHint: { textAlign: 'center', fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.medium },
-
-  heroRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    padding: 14, borderRadius: RADIUS.lg, backgroundColor: 'rgba(255,255,255,0.18)',
-  },
-  heroRowText: { color: COLORS.white, fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
-
-  controlRow: { flexDirection: 'row', gap: SPACING.sm },
-  heroGhostBtn: {
+  primaryBtnText: { fontSize: 18, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.2 },
+  controlRow: { flexDirection: 'row', gap: 12 },
+  controlPrimary: { flex: 2, paddingHorizontal: 12 },
+  secondaryBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, paddingVertical: 15, borderRadius: RADIUS.full,
-    backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
+    gap: 8, minHeight: 56, borderRadius: RADIUS.full, borderWidth: 1.5,
   },
-  heroGhostText: { color: COLORS.white, fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.heavy },
-  heroSolidBtn: {
-    flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, paddingVertical: 15, borderRadius: RADIUS.full, backgroundColor: COLORS.white,
+  secondaryBtnText: { fontSize: 18, fontWeight: FONT_WEIGHT.heavy },
+  cancelBtn: {
+    alignItems: 'center', justifyContent: 'center', minHeight: 52,
+    borderRadius: RADIUS.full, borderWidth: 1, marginTop: SPACING.md,
   },
-  heroSolidText: { color: COLORS.feeding, fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.heavy },
+  cancelText: { fontSize: 17, fontWeight: FONT_WEIGHT.bold },
+
+  // Heading row at the top of form cards
+  infoBadge: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  infoBadgeIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  infoBadgeText: { flex: 1, fontSize: 17, fontWeight: FONT_WEIGHT.bold },
+
+  // Breast sides
+  sidesRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  sideCard: {
+    flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.md, gap: 6, minHeight: 150,
+    borderRadius: 24, borderWidth: 1,
+  },
+  sideLabel: { fontSize: 15, fontWeight: FONT_WEIGHT.medium, letterSpacing: 0.5 },
+  sideTime: { fontSize: 32, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
+  activeDot: { position: 'absolute', top: 14, right: 14, width: 10, height: 10, borderRadius: 5 },
+  switchBtn: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  switchHint: { textAlign: 'center', fontSize: 13, fontWeight: FONT_WEIGHT.medium },
+
 
   // Side picker
-  sidePickerWrap: { gap: SPACING.md },
   pickCard: {
-    flex: 1, alignItems: 'center', padding: SPACING.md, gap: 6, minHeight: 130,
-    borderRadius: RADIUS.xl, borderWidth: 1,
+    flex: 1, alignItems: 'center', padding: SPACING.md, gap: 6, minHeight: 140,
+    borderRadius: 24, borderWidth: 1,
   },
-  pickIcon: { width: 52, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  pickLabel: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.heavy, letterSpacing: 1 },
-  sidePickerHint: { fontSize: FONT_SIZE.xs, textAlign: 'center', fontWeight: FONT_WEIGHT.medium },
-
-  cancelBtn: {
-    alignItems: 'center', padding: 14, borderRadius: RADIUS.full, borderWidth: 1, marginTop: SPACING.md,
-  },
-  cancelText: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
+  pickIcon: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  pickLabel: { fontSize: 17, fontWeight: FONT_WEIGHT.heavy, letterSpacing: 1 },
+  sidePickerHint: { fontSize: 13, textAlign: 'center', fontWeight: FONT_WEIGHT.medium },
 
   // Bottle forms
-  bottleForm: { gap: SPACING.md },
-  formSection: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, letterSpacing: 1 },
+  formSection: { fontSize: 13, fontWeight: FONT_WEIGHT.bold, letterSpacing: 1 },
   pillRow3: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   typePill: {
-    paddingVertical: 10, paddingHorizontal: 16, borderRadius: RADIUS.full, borderWidth: 1.5,
+    minHeight: 48, justifyContent: 'center', paddingHorizontal: 18, borderRadius: RADIUS.full, borderWidth: 1,
   },
-  typePillText: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold },
+  typePillText: { fontSize: 15, fontWeight: FONT_WEIGHT.semibold },
   typePillTextActive: { fontWeight: FONT_WEIGHT.heavy },
   qtyCard: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
-    padding: 10, borderRadius: RADIUS.xl, borderWidth: 1,
+    padding: 10, borderRadius: 24, borderWidth: 1,
   },
-  qtyBtn: { width: 44, height: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  qtyInput: {
-    flex: 1, height: 52, fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.heavy,
-  },
+  qtyBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  qtyInput: { flex: 1, height: 52, fontSize: 26, fontWeight: FONT_WEIGHT.heavy },
   unitToggle: { flexDirection: 'row', borderRadius: RADIUS.full, overflow: 'hidden', borderWidth: 1, padding: 3 },
-  unitBtn: { paddingHorizontal: 12, paddingVertical: 9, borderRadius: RADIUS.full },
-  unitBtnActive: { backgroundColor: COLORS.feeding },
-  unitText: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold },
+  unitBtn: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 12, borderRadius: RADIUS.full },
+  unitText: { fontSize: 15, fontWeight: FONT_WEIGHT.semibold },
   unitTextActive: { color: COLORS.white, fontWeight: FONT_WEIGHT.heavy },
-  unitLabel: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, paddingHorizontal: 8 },
+  unitLabel: { fontSize: 15, fontWeight: FONT_WEIGHT.bold, paddingHorizontal: 8 },
 
-  prepSummary: { borderRadius: RADIUS.xl, borderWidth: 1, paddingHorizontal: SPACING.md },
+  prepSummary: { borderRadius: 24, borderWidth: 1, paddingHorizontal: SPACING.md },
   prepSummaryRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12,
   },
-  prepSummaryLabel: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium },
-  prepSummaryVal: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.heavy },
+  prepSummaryLabel: { fontSize: 15, fontWeight: FONT_WEIGHT.medium },
+  prepSummaryVal: { fontSize: 17, fontWeight: FONT_WEIGHT.heavy },
+
+  // Timer running for another baby
+  otherBaby: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    padding: 14, borderRadius: 24, marginBottom: SPACING.md,
+  },
+  otherBabyIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  otherBabyText: { flex: 1, fontSize: 15, fontWeight: FONT_WEIGHT.semibold },
+  otherBabyBtn: {
+    minHeight: 48, justifyContent: 'center', paddingHorizontal: 20, borderRadius: RADIUS.full,
+  },
+  otherBabyBtnText: { color: COLORS.white, fontWeight: FONT_WEIGHT.heavy, fontSize: 15 },
 
   // Log items
   logItem: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    padding: 14, borderRadius: RADIUS.xl, borderWidth: 1, marginBottom: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 16,
+    padding: 16, borderRadius: 20, marginBottom: 10,
   },
-  logIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  logTitle: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
-  logSub: { fontSize: FONT_SIZE.sm, marginTop: 2 },
-  logTime: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.medium },
+  logIcon: {
+    width: 48, height: 48, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center',
+  },
+  logTitle: { fontSize: 17, fontWeight: FONT_WEIGHT.bold },
+  logSub: { fontSize: 15, marginTop: 2 },
+  logTime: { fontSize: 14, fontWeight: FONT_WEIGHT.medium, alignSelf: 'flex-start', marginTop: 2 },
 });

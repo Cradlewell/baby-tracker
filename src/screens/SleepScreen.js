@@ -8,14 +8,15 @@ import * as Haptics from 'expo-haptics';
 
 import { useBabyStore } from '../store/useBabyStore';
 import { useSleepStore, classifyIsNap } from '../store/useSleepStore';
-import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
-import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
-import GradientView from '../components/GradientView';
+import { COLORS } from '../constants/colors';
+import { FONT_WEIGHT, RADIUS, SPACING } from '../constants/theme';
 import { formatDurationMins, formatDuration, formatRelative, formatTime } from '../utils/formatters';
 
-const WHITE_SOFT = 'rgba(255,255,255,0.85)';
+// Local palette for this screen, taken from the user's approved screenshot.
+const SHOT_LIGHT = { blue: '#006BFD', blueText: '#0058D4', tile: '#DAE9FE', hero: '#EBF3FE', card: '#EEF4FE', surface: '#FFFFFF', text: '#032049', textSecondary: '#5A6690', border: '#E1EAFB', background: '#FBFBFE' };
+const SHOT_DARK = { blue: '#006BFD', blueText: '#7FB0FF', tile: '#1C2D52', hero: '#16223D', card: '#131D33', surface: '#1A2540', text: '#EEF3FF', textSecondary: '#A9B6D6', border: '#26324F', background: '#0B1220' };
 
-function SleepTimer({ C, session, onRequestEnd, onCancel }) {
+function SleepTimer({ S, session, onRequestEnd, onCancel }) {
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -28,68 +29,68 @@ function SleepTimer({ C, session, onRequestEnd, onCancel }) {
   const isNap = classifyIsNap(session.startTime, elapsed);
 
   return (
-    <GradientView colors={GRADIENTS.sleep} bubbles style={[styles.hero, styles.heroCentered, SHADOW.lg]}>
-      <View style={styles.heroPill}>
-        <View style={styles.liveDot} />
-        <Ionicons name={isNap ? 'sunny-outline' : 'moon'} size={14} color={COLORS.white} />
-        <Text style={styles.heroPillText}>{isNap ? 'Nap' : 'Night Sleep'}</Text>
+    <View style={[styles.hero, styles.heroCentered, { backgroundColor: S.hero }]}>
+      <View style={[styles.heroPill, { backgroundColor: S.tile }]}>
+        <View style={[styles.liveDot, { backgroundColor: S.blue }]} />
+        <Ionicons name={isNap ? 'sunny-outline' : 'moon-outline'} size={18} color={S.text} />
+        <Text style={[styles.heroPillText, { color: S.text }]}>{isNap ? 'Nap' : 'Night Sleep'}</Text>
       </View>
 
-      <Text style={styles.bigTimer}>
+      <Text style={[styles.bigTimer, { color: S.text }]}>
         {formatDurationMins(elapsed)}
       </Text>
-      <Text style={styles.timerSub}>
+      <Text style={[styles.timerSub, { color: S.textSecondary }]}>
         Started {formatTime(session.startTime)} · {formatRelative(session.startTime)}
       </Text>
 
       <View style={styles.sleepControls}>
         <TouchableOpacity
           onPress={onCancel}
-          style={styles.heroGhostBtn}
+          style={[styles.tertiaryBtn, { backgroundColor: S.surface, borderColor: S.border }]}
           accessibilityRole="button"
           accessibilityLabel="Cancel sleep session"
         >
-          <Text style={styles.heroGhostText}>Cancel</Text>
+          <Text style={[styles.tertiaryBtnText, { color: S.text }]}>Cancel</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={onRequestEnd}
-          style={styles.heroSolidBtn}
+          style={[styles.primaryBtn, styles.controlPrimary, { backgroundColor: S.blue }]}
           accessibilityRole="button"
           accessibilityLabel="Wake up — end sleep"
         >
-          <Ionicons name="sunny" size={20} color={COLORS.sleep} />
-          <Text style={styles.heroSolidText}>Wake Up</Text>
+          <Ionicons name="sunny-outline" size={24} color={COLORS.white} />
+          <Text style={styles.primaryBtnText}>Wake Up</Text>
         </TouchableOpacity>
       </View>
-    </GradientView>
-  );
-}
-
-function SleepLogItem({ log, C }) {
-  return (
-    <View style={[styles.logItem, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
-      <View style={[styles.logIcon, { backgroundColor: C.sleepLight }]}>
-        <Ionicons name={log.isNap ? 'sunny-outline' : 'moon'} size={18} color={COLORS.sleep} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.logTitle, { color: C.text }]}>
-          {log.isNap ? 'Nap' : 'Night Sleep'} · {formatDuration(log.totalSecs)}
-        </Text>
-        <Text style={[styles.logSub, { color: C.textSecondary }]}>
-          {log.wakeups > 0 ? `${log.wakeups} wakeup${log.wakeups > 1 ? 's' : ''}` : 'No wakeups'}
-          {' · '}{formatTime(log.startTime)} – {formatTime(log.endTime)}
-        </Text>
-      </View>
-      <Text style={[styles.logTime, { color: C.textMuted }]}>{formatRelative(log.endTime || log.createdAt)}</Text>
     </View>
   );
 }
 
-export default function SleepScreen() {
+function SleepLogItem({ log, S }) {
+  return (
+    <View style={[styles.logItem, { backgroundColor: S.card }]}>
+      <View style={[styles.logIcon, { backgroundColor: S.surface, borderColor: S.border }]}>
+        <Ionicons name={log.isNap ? 'sunny-outline' : 'moon-outline'} size={24} color={S.text} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.logTitle, { color: S.text }]}>
+          {log.isNap ? 'Nap' : 'Night Sleep'} · {formatDuration(log.totalSecs)}
+        </Text>
+        <Text style={[styles.logSub, { color: S.text }]}>
+          {log.wakeups > 0 ? `${log.wakeups} wakeup${log.wakeups > 1 ? 's' : ''}` : 'No wakeups'}
+          {' · '}{formatTime(log.startTime)} – {formatTime(log.endTime)}
+        </Text>
+      </View>
+      <Text style={[styles.logTime, { color: S.textSecondary }]}>{formatRelative(log.endTime || log.createdAt)}</Text>
+    </View>
+  );
+}
+
+export default function SleepScreen({ navigation }) {
   const { getActiveBaby, darkMode, babies, setActiveBaby } = useBabyStore();
   const baby = getActiveBaby();
   const babyId = baby?.id;
-  const C = darkMode ? DARK_COLORS : COLORS;
+  const S = darkMode ? SHOT_DARK : SHOT_LIGHT;
   const insets = useSafeAreaInsets();
 
   const session = useSleepStore((s) => s.session);
@@ -147,7 +148,7 @@ export default function SleepScreen() {
     : 0;
 
   return (
-    <View style={[styles.container, { backgroundColor: C.background }]}>
+    <View style={[styles.container, { backgroundColor: S.background }]}>
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
@@ -156,126 +157,143 @@ export default function SleepScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.screenHeader}>
-          <GradientView colors={GRADIENTS.sleep} style={[styles.headerIcon, { shadowColor: COLORS.sleep }]}>
-            <Ionicons name="moon" size={24} color={COLORS.white} />
-          </GradientView>
+          <View style={[styles.headerIcon, { backgroundColor: S.tile }]}>
+            <Ionicons name="moon-outline" size={30} color={S.blue} />
+          </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.screenTitle, { color: C.text }]}>Sleep</Text>
-            <Text style={[styles.screenSub, { color: C.textSecondary }]}>
+            <Text style={[styles.screenTitle, { color: S.text }]}>Sleep</Text>
+            <Text style={[styles.screenSub, { color: S.textSecondary }]}>
               {todaySecs > 0 ? `${formatDuration(todaySecs)} today` : 'No sleep logged yet'}
             </Text>
           </View>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Settings')}
+            style={[styles.headerBtn, { backgroundColor: S.tile }]}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+          >
+            <Ionicons name="settings-outline" size={24} color={S.blue} />
+          </TouchableOpacity>
         </View>
 
         {showSuccess && (
-          <View style={[styles.successToast, { backgroundColor: C.medicineLight, borderColor: COLORS.success + '40' }]}>
-            <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
-            <Text style={[styles.successText, { color: COLORS.success }]}>Sleep logged!</Text>
+          <View style={[styles.successToast, { backgroundColor: S.card, borderColor: COLORS.success + '40' }]}>
+            <Ionicons name="checkmark-circle-outline" size={22} color={COLORS.success} />
+            <Text style={[styles.successText, { color: S.text }]}>Sleep logged!</Text>
           </View>
         )}
 
         {otherSession && (
-          <View style={[styles.otherBaby, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
-            <View style={[styles.otherBabyIcon, { backgroundColor: C.sleepLight }]}>
-              <Ionicons name="moon-outline" size={20} color={COLORS.sleep} />
+          <View style={[styles.otherBaby, { backgroundColor: S.hero }]}>
+            <View style={[styles.otherBabyIcon, { backgroundColor: S.tile }]}>
+              <Ionicons name="moon-outline" size={22} color={S.blue} />
             </View>
-            <Text style={[styles.otherBabyText, { color: C.text }]}>
+            <Text style={[styles.otherBabyText, { color: S.text }]}>
               A sleep timer is running for {otherName}.
             </Text>
             <TouchableOpacity
               onPress={() => setActiveBaby(otherSession.babyId)}
               activeOpacity={0.85}
+              style={[styles.otherBabyBtn, { backgroundColor: S.blue }]}
               accessibilityRole="button"
               accessibilityLabel={`Switch to ${otherName}`}
             >
-              <GradientView colors={GRADIENTS.sleep} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.otherBabyBtn}>
-                <Text style={styles.otherBabyBtnText}>Open</Text>
-              </GradientView>
+              <Text style={styles.otherBabyBtnText}>Open</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {showWakeupForm && (
-          <GradientView colors={GRADIENTS.sleep} bubbles style={[styles.hero, styles.heroCentered, SHADOW.lg]}>
-            <View style={styles.heroIconTile}>
-              <Ionicons name="sunny" size={26} color={COLORS.white} />
+          <View style={[styles.hero, styles.heroCentered, { backgroundColor: S.hero }]}>
+            <View style={[styles.heroIconTile, { backgroundColor: S.tile }]}>
+              <Ionicons name="sunny-outline" size={34} color={S.blue} />
             </View>
-            <Text style={styles.wakeupFormTitle}>
+            <Text style={[styles.wakeupFormTitle, { color: S.text }]}>
               Slept {formatDuration(frozenSecs)}
             </Text>
-            <Text style={styles.wakeupFormSub}>
-              {formatTime(mySession.startTime)} – {formatTime(mySession.endTime)}{'\n'}How many times did baby wake up?
-            </Text>
+            <View style={styles.wakeupTextWrap}>
+              <Text style={[styles.wakeupFormRange, { color: S.text }]}>
+                {formatTime(mySession.startTime)} – {formatTime(mySession.endTime)}
+              </Text>
+              <Text style={[styles.wakeupFormQuestion, { color: S.text }]}>
+                How many times did baby wake up?
+              </Text>
+            </View>
             <View style={styles.stepperRow}>
               <TouchableOpacity
                 onPress={() => setWakeupCount(Math.max(0, wakeupCount - 1))}
-                style={styles.stepBtn}
+                style={[styles.stepBtn, { backgroundColor: S.tile }]}
                 accessibilityRole="button" accessibilityLabel="Decrease"
               >
-                <Ionicons name="remove" size={22} color={COLORS.white} />
+                <Ionicons name="remove" size={30} color={S.text} />
               </TouchableOpacity>
-              <Text style={styles.stepCount}>{wakeupCount}</Text>
+              <Text style={[styles.stepCount, { color: S.text }]}>{wakeupCount}</Text>
               <TouchableOpacity
                 onPress={() => setWakeupCount(wakeupCount + 1)}
-                style={styles.stepBtn}
+                style={[styles.stepBtn, { backgroundColor: S.tile }]}
                 accessibilityRole="button" accessibilityLabel="Increase"
               >
-                <Ionicons name="add" size={22} color={COLORS.white} />
+                <Ionicons name="add" size={30} color={S.text} />
               </TouchableOpacity>
             </View>
             <TouchableOpacity
               onPress={handleSaveSleep}
               disabled={saving}
-              style={[styles.heroSolidBtn, styles.fullWidth, { opacity: saving ? 0.6 : 1 }]}
+              style={[styles.primaryBtn, styles.fullWidth, { backgroundColor: S.blue, opacity: saving ? 0.6 : 1 }]}
               accessibilityRole="button" accessibilityLabel="Save sleep"
             >
-              <Ionicons name="checkmark-circle" size={20} color={COLORS.sleep} />
-              <Text style={styles.heroSolidText}>Save Sleep</Text>
+              <Ionicons name="checkmark-circle-outline" size={24} color={COLORS.white} />
+              <Text style={styles.primaryBtnText}>Save Sleep</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={resumeSleeping} accessibilityRole="button" accessibilityLabel="Still sleeping">
-              <Text style={styles.heroLink}>Still sleeping? Keep timing</Text>
+            <TouchableOpacity
+              onPress={resumeSleeping}
+              style={styles.linkBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Still sleeping"
+            >
+              <Text style={[styles.heroLink, { color: S.textSecondary }]}>Still sleeping? Keep timing</Text>
             </TouchableOpacity>
-          </GradientView>
+          </View>
         )}
 
         {!showWakeupForm && mySession ? (
-          <SleepTimer C={C} session={mySession} onRequestEnd={handleRequestEnd} onCancel={handleCancel} />
+          <SleepTimer S={S} session={mySession} onRequestEnd={handleRequestEnd} onCancel={handleCancel} />
         ) : !showWakeupForm && !session && (
           <View style={styles.startWrap}>
             {/* Start card with today's sleep info */}
-            <GradientView colors={GRADIENTS.sleep} bubbles style={[styles.hero, SHADOW.lg]}>
+            <View style={[styles.hero, { backgroundColor: S.hero }]}>
               <View style={styles.infoRowWrap}>
-                <View style={styles.infoTile}>
-                  <View style={styles.infoTileIcon}>
-                    <Ionicons name="time-outline" size={18} color={COLORS.white} />
+                <View style={[styles.infoTile, { backgroundColor: S.surface, borderColor: S.border }]}>
+                  <View style={[styles.infoTileIcon, { backgroundColor: S.tile }]}>
+                    <Ionicons name="time-outline" size={22} color={S.blue} />
                   </View>
-                  <Text style={styles.infoValue}>
+                  <Text style={[styles.infoValue, { color: S.text }]}>
                     {todaySecs > 0 ? formatDuration(todaySecs) : '—'}
                   </Text>
-                  <Text style={styles.infoLabel}>Today's sleep</Text>
+                  <Text style={[styles.infoLabel, { color: S.textSecondary }]}>Today's sleep</Text>
                 </View>
-                <View style={styles.infoTile}>
-                  <View style={styles.infoTileIcon}>
-                    <Ionicons name="moon-outline" size={18} color={COLORS.white} />
+                <View style={[styles.infoTile, { backgroundColor: S.surface, borderColor: S.border }]}>
+                  <View style={[styles.infoTileIcon, { backgroundColor: S.tile }]}>
+                    <Ionicons name="moon-outline" size={22} color={S.blue} />
                   </View>
-                  <Text style={styles.infoValue}>{todayCount}</Text>
-                  <Text style={styles.infoLabel}>Sessions today</Text>
+                  <Text style={[styles.infoValue, { color: S.text }]}>{todayCount}</Text>
+                  <Text style={[styles.infoLabel, { color: S.textSecondary }]}>Sessions today</Text>
                 </View>
               </View>
 
               <TouchableOpacity
                 onPress={handleStart}
                 activeOpacity={0.85}
-                style={[styles.heroSolidBtn, styles.startBtn]}
+                style={[styles.primaryBtn, { backgroundColor: S.blue }]}
                 accessibilityRole="button"
                 accessibilityLabel="Start sleep tracking"
               >
-                <Ionicons name="moon" size={22} color={COLORS.sleep} />
-                <Text style={[styles.heroSolidText, styles.startBtnText]}>Start Sleep</Text>
+                <Ionicons name="moon-outline" size={24} color={COLORS.white} />
+                <Text style={styles.primaryBtnText}>Start Sleep</Text>
               </TouchableOpacity>
-            </GradientView>
+            </View>
 
-            <Text style={[styles.hint, { color: C.textMuted }]}>
+            <Text style={[styles.hint, { color: S.textSecondary }]}>
               The timer keeps going even if the app is closed. Tap "Wake Up" when baby wakes.
             </Text>
           </View>
@@ -283,11 +301,11 @@ export default function SleepScreen() {
 
         {logs.length > 0 && (
           <>
-            <Text style={[styles.sectionTitle, { color: C.text, marginTop: SPACING.xl }]}>
+            <Text style={[styles.sectionTitle, { color: S.text, marginTop: SPACING.xl }]}>
               Recent sleep
             </Text>
             {logs.slice(0, 10).map((log) => (
-              <SleepLogItem key={log.id} log={log} C={C} />
+              <SleepLogItem key={log.id} log={log} S={S} />
             ))}
           </>
         )}
@@ -299,95 +317,92 @@ export default function SleepScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { paddingHorizontal: SPACING.lg },
-  screenHeader: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: SPACING.lg },
-  headerIcon: {
-    width: 52, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
-    shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5,
-  },
-  screenTitle: { fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.8 },
-  screenSub: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
-  successToast: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12,
-    borderRadius: RADIUS.lg, borderWidth: 1, marginBottom: SPACING.md,
-  },
-  successText: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
-  sectionTitle: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3, marginBottom: 12 },
 
-  // Gradient hero (timer / wake-up / start)
-  hero: { borderRadius: RADIUS.xxl, padding: SPACING.lg, gap: SPACING.md },
+  // Header
+  screenHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: SPACING.lg },
+  headerIcon: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  screenTitle: { fontSize: 28, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  screenSub: { fontSize: 15, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
+  headerBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+
+  successToast: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, minHeight: 48,
+    borderRadius: RADIUS.full, borderWidth: 1, marginBottom: SPACING.md,
+  },
+  successText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold },
+  sectionTitle: { fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3, marginBottom: 12 },
+
+  // Main light-blue card (timer / wake-up / start)
+  hero: { borderRadius: 28, padding: 20, gap: SPACING.md },
   heroCentered: { alignItems: 'center' },
   heroPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.full,
-    backgroundColor: 'rgba(255,255,255,0.22)',
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS.full,
   },
-  heroPillText: { color: COLORS.white, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: COLORS.white },
-  bigTimer: {
-    color: COLORS.white, fontSize: 64, fontWeight: FONT_WEIGHT.heavy,
-    letterSpacing: -2, fontVariant: ['tabular-nums'],
-  },
-  timerSub: { color: WHITE_SOFT, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium, marginTop: -8 },
-  heroIconTile: {
-    width: 52, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.22)',
-  },
-  wakeupFormTitle: { color: COLORS.white, fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.5 },
-  wakeupFormSub: { color: WHITE_SOFT, fontSize: FONT_SIZE.md, textAlign: 'center', fontWeight: FONT_WEIGHT.medium },
-  stepperRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xl },
-  stepBtn: {
-    width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
-  },
+  heroPillText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold },
+  liveDot: { width: 8, height: 8, borderRadius: 4 },
+  bigTimer: { fontSize: 64, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -2, fontVariant: ['tabular-nums'] },
+  timerSub: { fontSize: 15, fontWeight: FONT_WEIGHT.medium, marginTop: -8, textAlign: 'center' },
+
+  // Wake-up form
+  heroIconTile: { width: 64, height: 64, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  wakeupFormTitle: { fontSize: 32, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.5 },
+  wakeupTextWrap: { alignItems: 'center', gap: 6, marginTop: -4 },
+  wakeupFormRange: { fontSize: 18, fontWeight: FONT_WEIGHT.semibold, textAlign: 'center' },
+  wakeupFormQuestion: { fontSize: 17, fontWeight: FONT_WEIGHT.bold, textAlign: 'center' },
+  stepperRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xl, marginVertical: SPACING.sm },
+  stepBtn: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
   stepCount: {
-    color: COLORS.white, fontSize: 48, fontWeight: FONT_WEIGHT.heavy,
-    minWidth: 60, textAlign: 'center', fontVariant: ['tabular-nums'],
+    fontSize: 56, fontWeight: FONT_WEIGHT.heavy, minWidth: 64, textAlign: 'center', fontVariant: ['tabular-nums'],
   },
-  sleepControls: { flexDirection: 'row', gap: SPACING.sm, width: '100%' },
-  heroGhostBtn: {
-    flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 15, borderRadius: RADIUS.full,
-    backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
+  linkBtn: { minHeight: 48, justifyContent: 'center', paddingHorizontal: SPACING.md },
+  heroLink: { fontSize: 17, fontWeight: FONT_WEIGHT.semibold },
+
+  // Buttons
+  sleepControls: { flexDirection: 'row', gap: 12, width: '100%' },
+  primaryBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    minHeight: 56, paddingHorizontal: SPACING.lg, borderRadius: RADIUS.full, gap: 10,
   },
-  heroGhostText: { color: COLORS.white, fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.heavy },
-  heroSolidBtn: {
-    flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, paddingVertical: 15, borderRadius: RADIUS.full, backgroundColor: COLORS.white,
+  primaryBtnText: { fontSize: 18, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.2 },
+  controlPrimary: { flex: 2, paddingHorizontal: 12 },
+  fullWidth: { width: '100%' },
+  tertiaryBtn: {
+    flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 56,
+    borderRadius: RADIUS.full, borderWidth: 1,
   },
-  heroSolidText: { color: COLORS.sleep, fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.heavy },
-  fullWidth: { flex: 0, width: '100%' },
-  heroLink: { color: WHITE_SOFT, fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, textDecorationLine: 'underline' },
+  tertiaryBtnText: { fontSize: 17, fontWeight: FONT_WEIGHT.bold },
 
   // Start
   startWrap: { gap: SPACING.md },
-  infoRowWrap: { flexDirection: 'row', gap: SPACING.sm },
-  infoTile: {
-    flex: 1, padding: 14, borderRadius: RADIUS.xl, backgroundColor: 'rgba(255,255,255,0.18)',
-  },
+  infoRowWrap: { flexDirection: 'row', gap: 12 },
+  infoTile: { flex: 1, padding: 16, borderRadius: 24, borderWidth: 1 },
   infoTileIcon: {
-    width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.22)', marginBottom: 10,
+    width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 10,
   },
-  infoValue: { color: COLORS.white, fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.5 },
-  infoLabel: { color: WHITE_SOFT, fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, marginTop: 2 },
-  startBtn: { flex: 0, paddingVertical: 17 },
-  startBtnText: { fontSize: FONT_SIZE.lg },
-  hint: { textAlign: 'center', fontSize: FONT_SIZE.sm, paddingHorizontal: SPACING.md },
+  infoValue: { fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.5 },
+  infoLabel: { fontSize: 13, fontWeight: FONT_WEIGHT.semibold, marginTop: 2 },
+  hint: { textAlign: 'center', fontSize: 14, paddingHorizontal: SPACING.md },
 
   // Log items
   logItem: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    padding: 14, borderRadius: RADIUS.xl, borderWidth: 1, marginBottom: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 16,
+    padding: 16, borderRadius: 20, marginBottom: 10,
   },
-  logIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  logTitle: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
-  logSub: { fontSize: FONT_SIZE.sm, marginTop: 2 },
-  logTime: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.medium },
+  logIcon: {
+    width: 48, height: 48, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center',
+  },
+  logTitle: { fontSize: 17, fontWeight: FONT_WEIGHT.bold },
+  logSub: { fontSize: 15, marginTop: 2 },
+  logTime: { fontSize: 14, fontWeight: FONT_WEIGHT.medium, alignSelf: 'flex-start', marginTop: 2 },
+
+  // Timer running for another baby
   otherBaby: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    padding: 12, borderRadius: RADIUS.xl, borderWidth: 1, marginBottom: SPACING.md,
+    padding: 14, borderRadius: 24, marginBottom: SPACING.md,
   },
-  otherBabyIcon: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  otherBabyText: { flex: 1, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold },
-  otherBabyBtn: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: RADIUS.full },
-  otherBabyBtnText: { color: COLORS.white, fontWeight: FONT_WEIGHT.heavy, fontSize: FONT_SIZE.sm },
+  otherBabyIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  otherBabyText: { flex: 1, fontSize: 15, fontWeight: FONT_WEIGHT.semibold },
+  otherBabyBtn: { minHeight: 48, justifyContent: 'center', paddingHorizontal: 20, borderRadius: RADIUS.full },
+  otherBabyBtnText: { color: COLORS.white, fontWeight: FONT_WEIGHT.heavy, fontSize: 15 },
 });

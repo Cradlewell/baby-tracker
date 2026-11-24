@@ -1,0 +1,27 @@
+{
+  "name": "cradlewell-bloom-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Authentication, client verification and monitoring-data API for Cradlewell Bloom",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "db:setup": "node scripts/setup-db.js",
+    "admin": "node scripts/admin.js",
+    "test": "node --test --test-concurrency=1 test/"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.10",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.5",
+    "helmet": "^8.3.0",
+    "mysql2": "^3.24.6"
+  }
+}

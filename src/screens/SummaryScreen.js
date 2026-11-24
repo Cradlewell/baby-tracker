@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 
 import { useBabyStore } from '../store/useBabyStore';
@@ -11,17 +11,23 @@ import { useFeedingStore } from '../store/useFeedingStore';
 import { useSleepStore } from '../store/useSleepStore';
 import { useDiaperStore, DIAPER_TYPES } from '../store/useDiaperStore';
 import { useMedicineStore } from '../store/useMedicineStore';
+import {
+  useTemperatureStore, useBreathingStore, useSkinStore,
+  temperatureStatus, breathingStatus, skinStatus, TEMP_METHODS, BREATHING_SIGNS, JAUNDICE_LEVELS, SKIN_SIGNS,
+} from '../store/useHealthStores';
 import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
 import GradientView from '../components/GradientView';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
 import { formatDuration, formatTime, toMl, startOfToday, secondsWithinToday } from '../utils/formatters';
 
-function SummaryBlock({ icon, color, bg, title, children, C }) {
+function SummaryBlock({ icon, mci, color, bg, title, children, C }) {
   return (
     <View style={[styles.block, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
       <View style={styles.blockHeader}>
         <View style={[styles.blockIcon, { backgroundColor: bg }]}>
-          <Ionicons name={icon} size={20} color={color} />
+          {mci
+            ? <MaterialCommunityIcons name={mci} size={20} color={color} />
+            : <Ionicons name={icon} size={20} color={color} />}
         </View>
         <Text style={[styles.blockTitle, { color: C.text }]}>{title}</Text>
       </View>
@@ -30,16 +36,21 @@ function SummaryBlock({ icon, color, bg, title, children, C }) {
   );
 }
 
-function StatRow({ label, value, C }) {
+function StatRow({ label, value, level, C }) {
+  const color = level === 'urgent' ? COLORS.error : level === 'attention' ? COLORS.warning : C.text;
   return (
     <View style={styles.statRow}>
       <Text style={[styles.statLabel, { color: C.textSecondary }]}>{label}</Text>
-      <Text style={[styles.statVal, { color: C.text }]}>{value}</Text>
+      <Text style={[styles.statVal, { color }]}>{value}</Text>
     </View>
   );
 }
 
-export default function SummaryScreen({ navigation }) {
+const LEVEL_WORD = { normal: 'Normal', attention: 'Attention', urgent: 'Urgent' };
+const labelOf = (list, v) => list.find((x) => x.value === v)?.label;
+
+export default function SummaryScreen({ navigation, route }) {
+  const isTab = route?.name === 'Reports';
   const { getActiveBaby, darkMode } = useBabyStore();
   const baby = getActiveBaby();
   const babyId = baby?.id;
@@ -52,6 +63,9 @@ export default function SummaryScreen({ navigation }) {
       useSleepStore.getState().load(babyId);
       useDiaperStore.getState().load(babyId);
       useMedicineStore.getState().load(babyId);
+      useTemperatureStore.getState().load(babyId);
+      useBreathingStore.getState().load(babyId);
+      useSkinStore.getState().load(babyId);
     }
   }, [babyId]);
 
@@ -59,6 +73,9 @@ export default function SummaryScreen({ navigation }) {
   const rawSleepLogs = useSleepStore((s) => s.logs[babyId]);
   const rawDiaperLogs = useDiaperStore((s) => s.logs[babyId]);
   const rawMedLogs = useMedicineStore((s) => s.logs[babyId]);
+  const rawTempLogs = useTemperatureStore((s) => s.logs[babyId]);
+  const rawBreathLogs = useBreathingStore((s) => s.logs[babyId]);
+  const rawSkinLogs = useSkinStore((s) => s.logs[babyId]);
 
   const today = startOfToday();
   const isToday = (d) => d && new Date(d) >= today;
@@ -81,6 +98,11 @@ export default function SummaryScreen({ navigation }) {
     [rawMedLogs]
   );
 
+  const tempLogs = useMemo(() => (rawTempLogs || []).filter((l) => isToday(l.time)), [rawTempLogs]);
+  const breathLogs = useMemo(() => (rawBreathLogs || []).filter((l) => isToday(l.time)), [rawBreathLogs]);
+  const skinLogs = useMemo(() => (rawSkinLogs || []).filter((l) => isToday(l.time)), [rawSkinLogs]);
+  const highestTemp = tempLogs.length ? Math.max(...tempLogs.map((l) => Number(l.celsius))) : null;
+
   const breastFeeds = feedLogs.filter((f) => f.type === 'breast');
   const bottleFeeds = feedLogs.filter((f) => f.type === 'bottle');
   const totalBreastSecs = breastFeeds.reduce((s, f) => s + (f.totalSecs || 0), 0);
@@ -93,10 +115,11 @@ export default function SummaryScreen({ navigation }) {
   const naps = sleepLogs.filter((l) => l.isNap);
   const nightSleep = sleepLogs.filter((l) => !l.isNap);
 
-  // Diaper entries are saved with eventType 'urine' | 'stool' | 'both'.
+  // Diaper entries are saved with eventType 'urine' | 'stool' | 'both' | 'dry'.
   const typeOf = (d) => DIAPER_TYPES[d.eventType];
   const wetDiapers = diaperLogs.filter((d) => typeOf(d)?.wet).length;
   const stoolDiapers = diaperLogs.filter((d) => typeOf(d)?.stool).length;
+  const dryDiapers = diaperLogs.filter((d) => d.eventType === 'dry').length;
 
   const medicineGiven = medLogs.filter((m) => m.status === 'given');
   const medicineSkipped = medLogs.filter((m) => m.status === 'skipped');
@@ -106,18 +129,22 @@ export default function SummaryScreen({ navigation }) {
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
-          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 40 },
+          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + (isTab ? 110 : 40) },
         ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            style={[styles.backBtn, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}
-          >
-            <Ionicons name="chevron-back" size={22} color={C.text} />
-          </TouchableOpacity>
+          {isTab ? null : (
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={[styles.backBtn, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="chevron-back" size={22} color={C.text} />
+            </TouchableOpacity>
+          )}
           <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: C.text }]}>Daily Summary</Text>
             <Text style={[styles.date, { color: C.textSecondary }]}>{format(new Date(), 'EEEE, MMMM d')}</Text>
@@ -125,7 +152,7 @@ export default function SummaryScreen({ navigation }) {
         </View>
 
         {/* Overview hero */}
-        <GradientView colors={GRADIENTS.brand} bubbles style={[styles.hero, SHADOW.lg]}>
+        <GradientView colors={GRADIENTS.brand} style={[styles.hero, SHADOW.lg]}>
           <View style={styles.heroTop}>
             <View style={styles.heroChip}>
               <Ionicons name="sparkles" size={13} color={COLORS.white} />
@@ -181,6 +208,7 @@ export default function SummaryScreen({ navigation }) {
           <StatRow label="Total diapers" value={diaperLogs.length} C={C} />
           <StatRow label="Wet (urine or both)" value={wetDiapers} C={C} />
           <StatRow label="Stool (stool or both)" value={stoolDiapers} C={C} />
+          <StatRow label="Dry" value={dryDiapers} C={C} />
           {diaperLogs.length === 0 && (
             <Text style={[styles.emptyNote, { color: C.textMuted }]}>No diapers logged today</Text>
           )}
@@ -203,6 +231,76 @@ export default function SummaryScreen({ navigation }) {
             )}
           </SummaryBlock>
         )}
+
+        {/* Temperature block */}
+        <SummaryBlock mci="thermometer" color={C.primary} bg={C.primaryLight} title="Temperature" C={C}>
+          <StatRow label="Readings" value={tempLogs.length} C={C} />
+          {highestTemp != null ? (
+            <StatRow
+              label="Highest today"
+              value={`${highestTemp.toFixed(1)} °C`}
+              level={temperatureStatus(highestTemp)?.level}
+              C={C}
+            />
+          ) : null}
+          {tempLogs.map((l) => {
+            const st = temperatureStatus(Number(l.celsius));
+            return (
+              <StatRow
+                key={l.id}
+                label={`${formatTime(l.time)} · ${labelOf(TEMP_METHODS, l.method) || ''}`}
+                value={`${Number(l.celsius).toFixed(1)} °C · ${LEVEL_WORD[st?.level] || ''}`}
+                level={st?.level}
+                C={C}
+              />
+            );
+          })}
+          {tempLogs.length === 0 && (
+            <Text style={[styles.emptyNote, { color: C.textMuted }]}>No temperature logged today</Text>
+          )}
+        </SummaryBlock>
+
+        {/* Breathing block */}
+        <SummaryBlock mci="lungs" color={C.primary} bg={C.primaryLight} title="Breathing" C={C}>
+          <StatRow label="Checks" value={breathLogs.length} C={C} />
+          {breathLogs.map((l) => {
+            const st = breathingStatus(l.rate != null ? Number(l.rate) : null, l.signs || []);
+            const signs = (l.signs || []).map((v) => labelOf(BREATHING_SIGNS, v)).filter(Boolean).join(', ');
+            return (
+              <StatRow
+                key={l.id}
+                label={`${formatTime(l.time)}${signs ? ` · ${signs}` : ''}`}
+                value={`${l.rate != null ? `${l.rate}/min` : 'Signs'} · ${LEVEL_WORD[st?.level] || ''}`}
+                level={st?.level}
+                C={C}
+              />
+            );
+          })}
+          {breathLogs.length === 0 && (
+            <Text style={[styles.emptyNote, { color: C.textMuted }]}>No breathing checks today</Text>
+          )}
+        </SummaryBlock>
+
+        {/* Skin & jaundice block */}
+        <SummaryBlock mci="face-man-shimmer-outline" color={C.primary} bg={C.primaryLight} title="Skin & Jaundice" C={C}>
+          <StatRow label="Checks" value={skinLogs.length} C={C} />
+          {skinLogs.map((l) => {
+            const st = skinStatus(l.yellow, l.signs || []);
+            const signs = (l.signs || []).map((v) => labelOf(SKIN_SIGNS, v)).filter(Boolean).join(', ');
+            return (
+              <StatRow
+                key={l.id}
+                label={`${formatTime(l.time)}${signs ? ` · ${signs}` : ''}`}
+                value={`${labelOf(JAUNDICE_LEVELS, l.yellow) || 'Skin changes'} · ${LEVEL_WORD[st?.level] || ''}`}
+                level={st?.level}
+                C={C}
+              />
+            );
+          })}
+          {skinLogs.length === 0 && (
+            <Text style={[styles.emptyNote, { color: C.textMuted }]}>No skin checks today</Text>
+          )}
+        </SummaryBlock>
 
         {/* Guidance */}
         <View style={[styles.hintCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>

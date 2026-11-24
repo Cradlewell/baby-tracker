@@ -84,7 +84,7 @@ export default function EditBabyScreen({ navigation, route }) {
         </View>
 
         {/* Avatar hero */}
-        <GradientView colors={GRADIENTS.brand} bubbles style={[styles.hero, SHADOW.lg]}>
+        <GradientView colors={GRADIENTS.brand} style={[styles.hero, SHADOW.lg]}>
           <View style={styles.avatarRing}>
             <View style={styles.avatar}>
               <Text style={styles.avatarLetter}>

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '../lib/storage';
 import { uid } from '../utils/formatters';
 
 const STORAGE_KEY = '@cradlewell_babies';

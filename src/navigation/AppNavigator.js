@@ -1,6 +1,6 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, AppState } from 'react-native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,8 +24,40 @@ import VaccinationScreen from '../screens/VaccinationScreen';
 import SummaryScreen from '../screens/SummaryScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import EditBabyScreen from '../screens/EditBabyScreen';
+import LoginScreen from '../screens/LoginScreen';
+import RegisterScreen from '../screens/RegisterScreen';
+import VerifyOtpScreen from '../screens/VerifyOtpScreen';
+import ClientVerifyScreen from '../screens/ClientVerifyScreen';
+import TemperatureScreen from '../screens/TemperatureScreen';
+import BreathingScreen from '../screens/BreathingScreen';
+import SkinScreen from '../screens/SkinScreen';
+import MilestonesScreen from '../screens/MilestonesScreen';
+import HealthAlertsScreen from '../screens/HealthAlertsScreen';
+import { setUnauthorizedHandler } from '../lib/api';
+import { handleSessionLost } from '../lib/session';
+import { flushPending } from '../lib/storage';
 
 const Stack = createStackNavigator();
+const navigationRef = createNavigationContainerRef();
+
+// When the server ends the session (expired, logged out elsewhere) or the client's access is
+// revoked, leave the records and return to the right sign-in step.
+let handlingSessionLoss = false;
+async function onSessionLost(err) {
+  if (handlingSessionLoss) return;
+  handlingSessionLoss = true;
+  try {
+    const next = await handleSessionLost(err);
+    if (navigationRef.isReady()) {
+      navigationRef.reset({
+        index: 0,
+        routes: [{ name: next, params: { notice: { kind: 'error', message: err.message } } }],
+      });
+    }
+  } finally {
+    handlingSessionLoss = false;
+  }
+}
 const Tab = createBottomTabNavigator();
 
 function TabBar({ state, navigation }) {
@@ -37,7 +69,7 @@ function TabBar({ state, navigation }) {
     { name: 'Home', label: 'Home', icon: 'home-outline', iconActive: 'home' },
     { name: 'Feeding', label: 'Feed', icon: 'nutrition-outline', iconActive: 'nutrition' },
     { name: 'Sleep', label: 'Sleep', icon: 'moon-outline', iconActive: 'moon' },
-    { name: 'Growth', label: 'Growth', icon: 'stats-chart-outline', iconActive: 'stats-chart' },
+    { name: 'Reports', label: 'Reports', icon: 'bar-chart-outline', iconActive: 'bar-chart' },
     { name: 'More', label: 'More', icon: 'grid-outline', iconActive: 'grid' },
   ];
 
@@ -73,13 +105,14 @@ function TabBar({ state, navigation }) {
             }}
           >
             {isFocused ? (
-              <GradientView colors={GRADIENTS.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.activePill}>
-                <Ionicons name={tab.iconActive} size={18} color={COLORS.white} />
+              <GradientView colors={GRADIENTS.brand} style={styles.activePill}>
+                <Ionicons name={tab.iconActive} size={20} color={COLORS.white} />
                 <Text style={styles.activeLabel} numberOfLines={1}>{tab.label}</Text>
               </GradientView>
             ) : (
-              <View style={styles.idleIcon}>
-                <Ionicons name={tab.icon} size={22} color={C.textMuted} />
+              <View style={styles.idleItem}>
+                <Ionicons name={tab.icon} size={20} color={C.textSecondary} />
+                <Text style={[styles.idleLabel, { color: C.textSecondary }]} numberOfLines={1}>{tab.label}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -98,7 +131,7 @@ function MainTabs() {
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Feeding" component={FeedingScreen} />
       <Tab.Screen name="Sleep" component={SleepScreen} />
-      <Tab.Screen name="Growth" component={GrowthScreen} />
+      <Tab.Screen name="Reports" component={SummaryScreen} />
       <Tab.Screen name="More" component={MoreScreen} />
     </Tab.Navigator>
   );
@@ -108,10 +141,26 @@ export default function AppNavigator() {
   const darkMode = useBabyStore((s) => s.darkMode);
   const C = darkMode ? DARK_COLORS : COLORS;
 
+  useEffect(() => {
+    setUnauthorizedHandler(onSessionLost);
+    // Send changes made offline whenever the app comes back to the foreground.
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') flushPending().catch(() => {});
+    });
+    return () => {
+      setUnauthorizedHandler(null);
+      sub.remove();
+    };
+  }, []);
+
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator screenOptions={{ headerShown: false, cardStyle: { backgroundColor: C.background } }}>
         <Stack.Screen name="Splash" component={SplashScreen} />
+        <Stack.Screen name="Login" component={LoginScreen} />
+        <Stack.Screen name="Register" component={RegisterScreen} />
+        <Stack.Screen name="VerifyOtp" component={VerifyOtpScreen} />
+        <Stack.Screen name="ClientVerify" component={ClientVerifyScreen} />
         <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         <Stack.Screen name="Main" component={MainTabs} />
         <Stack.Screen name="Diaper" component={DiaperScreen} options={{ presentation: 'modal' }} />
@@ -120,48 +169,58 @@ export default function AppNavigator() {
         <Stack.Screen name="Summary" component={SummaryScreen} options={{ presentation: 'modal' }} />
         <Stack.Screen name="Settings" component={SettingsScreen} options={{ presentation: 'modal' }} />
         <Stack.Screen name="EditBaby" component={EditBabyScreen} options={{ presentation: 'modal' }} />
+        <Stack.Screen name="Growth" component={GrowthScreen} />
+        <Stack.Screen name="Temperature" component={TemperatureScreen} />
+        <Stack.Screen name="Breathing" component={BreathingScreen} />
+        <Stack.Screen name="Skin" component={SkinScreen} />
+        <Stack.Screen name="Milestones" component={MilestonesScreen} />
+        <Stack.Screen name="HealthAlerts" component={HealthAlertsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
 }
 
 const styles = StyleSheet.create({
+  // Brand UI: a white bar with a label under every icon; the active tab is a gradient pill.
   tabBar: {
     position: 'absolute',
-    left: 16,
-    right: 16,
+    left: 12,
+    right: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: RADIUS.full,
+    borderRadius: 28,
     borderWidth: 1,
-    padding: 7,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
   },
   tabItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
+    minHeight: 56,
   },
-  tabItemActive: { flex: 1.7 },
+  tabItemActive: {},
   activePill: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    height: 48,
-    alignSelf: 'stretch',
-    borderRadius: RADIUS.full,
-    paddingHorizontal: 12,
+    gap: 2,
+    width: 64,
+    height: 52,
+    borderRadius: 26,
   },
   activeLabel: {
     color: COLORS.white,
-    fontSize: FONT_SIZE.sm,
+    fontSize: FONT_SIZE.xs,
     fontWeight: FONT_WEIGHT.bold,
   },
-  idleIcon: {
-    width: 48,
-    height: 48,
+  idleItem: {
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 2,
+    height: 52,
+  },
+  idleLabel: {
+    fontSize: FONT_SIZE.xs,
+    fontWeight: FONT_WEIGHT.semibold,
   },
 });

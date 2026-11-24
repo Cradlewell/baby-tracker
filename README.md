@@ -2,7 +2,7 @@
 
 A newborn baby tracker for Android and iOS, built with Expo and React Native. Parents use it to log feeds, sleep, diapers, medicine, growth and vaccinations for one or more babies.
 
-All data is stored **only on the device**. There is no backend, no login and no analytics.
+Caregivers sign in with an account, verify a client by a one-time code sent to the client's phone, and then work with that client's records. The records are stored in MySQL behind the API in [`server/`](server/README.md); the app never connects to the database directly. There are no analytics.
 
 ## Requirements
 
@@ -14,10 +14,20 @@ All data is stored **only on the device**. There is no backend, no login and no 
 
 ## Run locally
 
+Start the API first (see [server/README.md](server/README.md) for the one-time database setup):
+
+```bash
+cd server && npm install && npm start
+```
+
+Then, in another terminal, the app:
+
 ```bash
 npm install
 npx expo start
 ```
+
+In development the app calls the API on port 4000 of the computer running Expo. Set `EXPO_PUBLIC_API_URL` to use another address.
 
 Scan the QR code with Expo Go on Android, or with the Camera app on iOS. Your phone and computer must be on the same Wi‑Fi network.
 
@@ -49,9 +59,24 @@ src/
   constants/                Colours (light and dark) and theme tokens
 ```
 
+## Sign-in flow
+
+```
+Splash → Login ─┬─ Register → VerifyOtp (own phone) → Login
+                └─ ClientVerify (client's phone) → VerifyOtp (client's phone) → Main / Onboarding
+```
+
+- `src/lib/session.js`: register, login, client verification, logout, switch client, and restoring the session on start.
+- `src/lib/api.js`: HTTP calls to the API. On an expired session or revoked access, the navigator sends the user back to Login or ClientVerify.
+- The session token is kept in `expo-secure-store` (Keychain / Keystore).
+- Logout and **Switch Client** are in Settings → Account.
+- Each time the app opens, a logged-in nurse is asked for the client's phone number again (one nurse serves many clients). Changes saved offline are uploaded first. Without internet, the last client opens from the phone's cached copy.
+
 ## How data is stored
 
-Everything is kept in AsyncStorage on the device:
+The stores still read and write through an AsyncStorage-style API, but they import it from `src/lib/storage.js`. While a client is verified, that module sends baby profiles and records to the API (MySQL) and keeps a cached copy on the phone, so the app works offline. Changes made offline are uploaded when the app is next active or saves again. Settings and running timers stay on the phone only.
+
+Storage keys:
 
 | Key | Contents |
 |---|---|
@@ -85,6 +110,6 @@ When a vaccine is renamed, add its old name to `aliases` so that doses parents a
 
 ## Known gaps
 
-- There are no automated tests and no linter yet.
+- The app has no automated tests and no linter yet. The API has an end-to-end test (`cd server && npm test`).
 - The **Export data** option is a placeholder.
 - Reminders and notifications are not implemented.

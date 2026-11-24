@@ -1,83 +1,96 @@
-// Cradlewell Bloom Design System — Color Tokens
-// "Bloom" palette: soft violet → blossom pink brand, lavender-cream surfaces,
-// and bright-but-gentle category colours.
+// Cradlewell design tokens, from the official brand guidelines
+// (Cradlewell Brand Representation / Color Scheme):
+//   #6388FF  Primary Blue    (Pantone 2718 C)
+//   #5F47FF  Primary Purple  (Pantone 2725 C)
+//   brand gradient #6388FF -> #5F47FF at -45°
+//   navy #1B1F2E (one-colour logo)
+// Three colours only, plus their tints and shades. Green/amber/red appear only to carry a
+// status (normal / attention / urgent or overdue).
+//
+// Contrast: white on #5F47FF is 5.5:1 (buttons, small text); white on #6388FF is 3.2:1
+// (backgrounds, the gradient and large bold text only); navy on white is 16.4:1.
+
+const BRAND_BLUE = '#6388FF';
+const BRAND_PURPLE = '#5F47FF';
+const NAVY = '#1B1F2E';
+const LAVENDER = '#EEF0FF'; // tint used for icon tiles, chips and selected states
 
 export const COLORS = {
   // Brand
-  primary: '#7C5CFC',
-  primaryLight: '#F1EDFF',
-  primaryDark: '#5B3FD9',
-  accent: '#FF7EB3',
-  accentLight: '#FFEAF3',
+  primary: BRAND_PURPLE,
+  primaryLight: LAVENDER,
+  primaryDark: '#4A35E0',
+  brandBlue: BRAND_BLUE,
+  accent: BRAND_BLUE,
+  accentLight: '#E6ECFF',
 
   // Surfaces
-  background: '#FAF7FF',
-  backgroundDark: '#110D1D',
+  background: '#F5F6FF',
+  backgroundDark: '#11131C',
   card: '#FFFFFF',
-  cardDark: '#1C1730',
+  cardDark: NAVY,
   surface: '#FFFFFF',
-  surfaceDark: '#241E3B',
+  surfaceDark: '#22273A',
 
   // Text
-  text: '#21183C',
-  textSecondary: '#6B6485',
-  textMuted: '#A49DBB',
-  textDark: '#F4F1FF',
-  textSecondaryDark: '#B3ACCB',
-  textMutedDark: '#7D7699',
+  text: NAVY,
+  textSecondary: '#5B6280',
+  textMuted: '#8C92AE',
+  textDark: '#F1F2FA',
+  textSecondaryDark: '#A8AECB',
+  textMutedDark: '#7A80A0',
 
   // Borders
-  border: '#EEE9F8',
-  borderDark: '#332B4F',
+  border: '#E6E8F5',
+  borderDark: '#2E3450',
 
-  // Category Colors
-  feeding: '#FF5C8A',
-  feedingLight: '#FFEDF2',
-  feedingDark: '#3A1426',
+  // Care types share the brand colour; they are told apart by icon and label.
+  feeding: BRAND_PURPLE,
+  feedingLight: LAVENDER,
+  feedingDark: '#262B4A',
 
-  sleep: '#7B6CF6',
-  sleepLight: '#EFEDFF',
-  sleepDark: '#221C45',
+  sleep: BRAND_PURPLE,
+  sleepLight: LAVENDER,
+  sleepDark: '#262B4A',
 
-  diaper: '#F5A623',
-  diaperLight: '#FFF5E1',
-  diaperDark: '#36260A',
+  diaper: BRAND_PURPLE,
+  diaperLight: LAVENDER,
+  diaperDark: '#262B4A',
 
-  medicine: '#1FBF9A',
-  medicineLight: '#E3F9F3',
-  medicineDark: '#0D2E27',
+  medicine: BRAND_PURPLE,
+  medicineLight: LAVENDER,
+  medicineDark: '#262B4A',
 
-  growth: '#22A6F2',
-  growthLight: '#E4F4FE',
-  growthDark: '#0B2A3D',
+  growth: BRAND_PURPLE,
+  growthLight: LAVENDER,
+  growthDark: '#262B4A',
 
-  vaccination: '#FF8547',
-  vaccinationLight: '#FFF0E7',
-  vaccinationDark: '#3A1D0E',
+  vaccination: BRAND_PURPLE,
+  vaccinationLight: LAVENDER,
+  vaccinationDark: '#262B4A',
 
-  // Semantic
-  success: '#1FBF9A',
-  successLight: '#E3F9F3',
-  error: '#F0476B',
-  errorLight: '#FFEEF2',
-  warning: '#F5A623',
-  warningLight: '#FFF5E1',
+  // Status only (normal / attention / urgent), as in the brand UI mock-up
+  success: '#2B9A66',
+  successLight: '#E3F5EC',
+  error: '#E03A3A',
+  errorLight: '#FDECEC',
+  warning: '#C77700',
+  warningLight: '#FFF4E0',
 
-  // Neutral scale
+  // Neutral scale (navy-tinted)
   white: '#FFFFFF',
-  gray50: '#FAF9FD',
-  gray100: '#F3F1F9',
-  gray200: '#E5E1F0',
-  gray300: '#CEC8DF',
-  gray400: '#A49DBB',
-  gray500: '#6B6485',
-  gray600: '#4E4767',
-  gray700: '#37304F',
-  gray800: '#241E3B',
-  gray900: '#140F24',
+  gray50: '#F9FAFE',
+  gray100: '#F1F2FA',
+  gray200: '#E2E4F1',
+  gray300: '#C9CCE0',
+  gray400: '#8C92AE',
+  gray500: '#5B6280',
+  gray600: '#41475F',
+  gray700: '#2E3450',
+  gray800: '#22273A',
+  gray900: NAVY,
   black: '#000000',
 
-  // Night mode special
   nightOverlay: 'rgba(0,0,0,0.5)',
 };
 
@@ -96,20 +109,32 @@ export const DARK_COLORS = {
   medicineLight: COLORS.medicineDark,
   growthLight: COLORS.growthDark,
   vaccinationLight: COLORS.vaccinationDark,
-  primaryLight: '#2A2150',
-  accentLight: '#3A1A2E',
+  primaryLight: '#262B4A',
+  accentLight: '#262B4A',
 };
 
-// Gradient stops used by <GradientView>. Each is [from, to].
+// Every gradient is the brand gradient (-45°: GradientView's default top-left to bottom-right).
+const BRAND_GRADIENT = [BRAND_BLUE, BRAND_PURPLE];
 export const GRADIENTS = {
-  brand: ['#8E6CFF', '#FF7EB3'],
-  brandDeep: ['#6A4CF5', '#C35CF0'],
-  sunrise: ['#FFB07C', '#FF7EB3'],
+  brand: BRAND_GRADIENT,
+  brandDeep: BRAND_GRADIENT,
+  sunrise: BRAND_GRADIENT,
+  feeding: BRAND_GRADIENT,
+  sleep: BRAND_GRADIENT,
+  diaper: BRAND_GRADIENT,
+  medicine: BRAND_GRADIENT,
+  growth: BRAND_GRADIENT,
+  vaccination: BRAND_GRADIENT,
+  night: [NAVY, '#11131C'],
+};
+
+// Kept unchanged on purpose: the Home "Quick log" tiles stay exactly as they were
+// (user instruction). Used only by that section.
+export const QUICK_LOG_GRADIENTS = {
   feeding: ['#FF7EA6', '#FF5C8A'],
   sleep: ['#9A8CFF', '#6656E8'],
   diaper: ['#FFC857', '#F59E0B'],
   medicine: ['#4FD8B5', '#16A884'],
   growth: ['#5CC6FF', '#1E90E0'],
   vaccination: ['#FFAA6E', '#FF7036'],
-  night: ['#2A2150', '#120E22'],
 };
