@@ -49,7 +49,7 @@ function buildRecords(babyId, dob, existing = []) {
   const used = new Set();
   const records = DEFAULT_SCHEDULE.map((v) => {
     const names = [v.name, ...(v.aliases || [])];
-    const prev = existing.find((r) => names.includes(r.name) && !used.has(r.id));
+    const prev = existing.find((r) => !r.custom && names.includes(r.name) && !used.has(r.id));
     const dueDate = new Date(birth.getTime() + v.due * 86400000).toISOString();
     if (prev) {
       used.add(prev.id);
@@ -66,9 +66,10 @@ function buildRecords(babyId, dob, existing = []) {
       notes: '',
     };
   });
-  // Never throw away a vaccine the parent already marked as given.
-  const extraCompleted = existing.filter((r) => r.completed && !used.has(r.id));
-  return [...records, ...extraCompleted];
+  // Never throw away a vaccine the parent already marked as given, or one a nurse added.
+  const custom = existing.filter((r) => r.custom);
+  const extraCompleted = existing.filter((r) => !r.custom && r.completed && !used.has(r.id));
+  return [...records, ...extraCompleted, ...custom];
 }
 
 const sameRecords = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -108,6 +109,27 @@ export const useVaccinationStore = create((set, get) => {
           : v
       );
       await save(babyId, list);
+    },
+
+    // A vaccine not in the standard schedule (for example one the doctor recommends).
+    addCustom: async (babyId, { name, dueDate, notes = '' }) => {
+      const record = {
+        id: uid(),
+        babyId,
+        name: name.trim(),
+        description: 'Added by you',
+        dueDate: dueDate.toISOString(),
+        completed: false,
+        completedDate: null,
+        notes,
+        custom: true,
+      };
+      await save(babyId, [...(get().records[babyId] || []), record]);
+      return record;
+    },
+
+    removeCustom: async (babyId, vaccId) => {
+      await save(babyId, (get().records[babyId] || []).filter((v) => !(v.custom && v.id === vaccId)));
     },
 
     markNotCompleted: async (babyId, vaccId) => {

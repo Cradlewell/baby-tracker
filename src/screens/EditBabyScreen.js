@@ -11,7 +11,7 @@ import { useVaccinationStore } from '../store/useVaccinationStore';
 import { validateDob, formatDobInput } from '../utils/formatters';
 import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
 import GradientView from '../components/GradientView';
-import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
+import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW, fs } from '../constants/theme';
 
 export default function EditBabyScreen({ navigation, route }) {
   const { babyId } = route.params;
@@ -78,7 +78,7 @@ export default function EditBabyScreen({ navigation, route }) {
             <Ionicons name="chevron-back" size={22} color={C.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: C.text }]}>Edit Profile</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.title, { color: C.text }]}>Edit Profile</Text>
             <Text style={[styles.subtitle, { color: C.textSecondary }]}>Name, birthday & more</Text>
           </View>
         </View>
@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
     width: 84, height: 84, borderRadius: 42, backgroundColor: COLORS.white,
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarLetter: { fontSize: 38, fontWeight: FONT_WEIGHT.heavy, color: COLORS.primary },
+  avatarLetter: { fontSize: fs(38), fontWeight: FONT_WEIGHT.heavy, color: COLORS.primary },
   heroName: {
     fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white,
     letterSpacing: -0.4, marginTop: SPACING.md,

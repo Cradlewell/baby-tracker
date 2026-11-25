@@ -1,15 +1,15 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { format } from 'date-fns';
+import { Ionicons } from '@expo/vector-icons';
+import { format, addDays, isSameDay } from 'date-fns';
 
 import { useBabyStore } from '../store/useBabyStore';
 import { useFeedingStore } from '../store/useFeedingStore';
 import { useSleepStore } from '../store/useSleepStore';
-import { useDiaperStore, DIAPER_TYPES } from '../store/useDiaperStore';
+import { useDiaperStore } from '../store/useDiaperStore';
 import { useMedicineStore } from '../store/useMedicineStore';
 import {
   useTemperatureStore, useBreathingStore, useSkinStore,
@@ -17,34 +17,16 @@ import {
 } from '../store/useHealthStores';
 import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
 import GradientView from '../components/GradientView';
-import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
-import { formatDuration, formatTime, toMl, startOfToday, secondsWithinToday } from '../utils/formatters';
-
-function SummaryBlock({ icon, mci, color, bg, title, children, C }) {
-  return (
-    <View style={[styles.block, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
-      <View style={styles.blockHeader}>
-        <View style={[styles.blockIcon, { backgroundColor: bg }]}>
-          {mci
-            ? <MaterialCommunityIcons name={mci} size={20} color={color} />
-            : <Ionicons name={icon} size={20} color={color} />}
-        </View>
-        <Text style={[styles.blockTitle, { color: C.text }]}>{title}</Text>
-      </View>
-      {children}
-    </View>
-  );
-}
-
-function StatRow({ label, value, level, C }) {
-  const color = level === 'urgent' ? COLORS.error : level === 'attention' ? COLORS.warning : C.text;
-  return (
-    <View style={styles.statRow}>
-      <Text style={[styles.statLabel, { color: C.textSecondary }]}>{label}</Text>
-      <Text style={[styles.statVal, { color }]}>{value}</Text>
-    </View>
-  );
-}
+import { SummaryBlock, StatRow, SortedBlocks } from '../components/SummaryParts';
+import CalendarModal from '../components/CalendarModal';
+import MonthSummary from '../components/MonthSummary';
+import DailyReport from '../components/DailyReport';
+import { buildDailyData } from '../lib/dailyReport';
+import { monthSummary, RANGE_DAYS } from '../lib/monthSummary';
+import { useGrowthStore } from '../store/useGrowthStore';
+import { useVaccinationStore } from '../store/useVaccinationStore';
+import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW, TIGHT_TEXT, fs } from '../constants/theme';
+import { formatDuration, formatTime, startOfToday } from '../utils/formatters';
 
 const LEVEL_WORD = { normal: 'Normal', attention: 'Attention', urgent: 'Urgent' };
 const labelOf = (list, v) => list.find((x) => x.value === v)?.label;
@@ -57,6 +39,21 @@ export default function SummaryScreen({ navigation, route }) {
   const C = darkMode ? DARK_COLORS : COLORS;
   const insets = useSafeAreaInsets();
 
+  // The day being summarised. Today by default, and again whenever the screen is reopened.
+  const [day, setDay] = useState(startOfToday);
+  // 'day' shows one day; 'month' shows the 30 days ending on endDate (today by default).
+  const [mode, setMode] = useState('day');
+  const [endDate, setEndDate] = useState(startOfToday);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  useEffect(() => navigation.addListener('focus', () => {
+    setDay(startOfToday());
+    setEndDate(startOfToday());
+  }), [navigation]);
+  const isMonth = mode === 'month';
+  const shown = isMonth ? endDate : day;
+  const setShown = isMonth ? setEndDate : setDay;
+  const shownIsToday = isSameDay(shown, new Date());
+
   useEffect(() => {
     if (babyId) {
       useFeedingStore.getState().load(babyId);
@@ -66,8 +63,10 @@ export default function SummaryScreen({ navigation, route }) {
       useTemperatureStore.getState().load(babyId);
       useBreathingStore.getState().load(babyId);
       useSkinStore.getState().load(babyId);
+      useGrowthStore.getState().load(babyId);
+      if (baby?.dob) useVaccinationStore.getState().load(babyId, baby.dob);
     }
-  }, [babyId]);
+  }, [babyId, baby?.dob]);
 
   const rawFeedLogs = useFeedingStore((s) => s.logs[babyId]);
   const rawSleepLogs = useSleepStore((s) => s.logs[babyId]);
@@ -76,53 +75,64 @@ export default function SummaryScreen({ navigation, route }) {
   const rawTempLogs = useTemperatureStore((s) => s.logs[babyId]);
   const rawBreathLogs = useBreathingStore((s) => s.logs[babyId]);
   const rawSkinLogs = useSkinStore((s) => s.logs[babyId]);
+  const rawGrowthLogs = useGrowthStore((s) => s.logs[babyId]);
+  const rawVaccines = useVaccinationStore((s) => s.records[babyId]);
 
-  const today = startOfToday();
-  const isToday = (d) => d && new Date(d) >= today;
+  const monthData = useMemo(() => (isMonth ? monthSummary({
+    end: endDate, dob: baby?.dob,
+    feeds: rawFeedLogs, sleeps: rawSleepLogs, diapers: rawDiaperLogs, medicines: rawMedLogs,
+    temps: rawTempLogs, breaths: rawBreathLogs, skin: rawSkinLogs, growth: rawGrowthLogs, vaccines: rawVaccines,
+  }) : null), [isMonth, endDate, baby?.dob, rawFeedLogs, rawSleepLogs, rawDiaperLogs, rawMedLogs,
+    rawTempLogs, rawBreathLogs, rawSkinLogs, rawGrowthLogs, rawVaccines]);
+
+  const viewingToday = isSameDay(day, new Date());
+  const dayStart = day.getTime();
+  const dayEnd = viewingToday ? Date.now() : addDays(day, 1).getTime();
+  const isToday = (d) => {
+    if (!d) return false;
+    const t = new Date(d).getTime();
+    return t >= dayStart && t < addDays(day, 1).getTime();
+  };
+  // Seconds of a sleep that fall inside the chosen day (up to now when it is today).
+  const secondsWithinToday = (start, end) => {
+    const a = Math.max(new Date(start).getTime(), dayStart);
+    const b = Math.min(end ? new Date(end).getTime() : Date.now(), dayEnd);
+    return b > a ? Math.floor((b - a) / 1000) : 0;
+  };
+  const onDay = viewingToday ? 'today' : 'on this day';
 
   const feedLogs = useMemo(
     () => (rawFeedLogs || []).filter((l) => isToday(l.startTime || l.createdAt)),
-    [rawFeedLogs]
+    [rawFeedLogs, dayStart]
   );
   // Sleeps that overlap today, including an overnight sleep that started yesterday.
   const sleepLogs = useMemo(
     () => (rawSleepLogs || []).filter((l) => secondsWithinToday(l.startTime, l.endTime) > 0),
-    [rawSleepLogs]
+    [rawSleepLogs, dayStart]
   );
   const diaperLogs = useMemo(
     () => (rawDiaperLogs || []).filter((l) => isToday(l.eventTime || l.createdAt)),
-    [rawDiaperLogs]
-  );
-  const medLogs = useMemo(
-    () => (rawMedLogs || []).filter((l) => isToday(l.time || l.createdAt)),
-    [rawMedLogs]
+    [rawDiaperLogs, dayStart]
   );
 
-  const tempLogs = useMemo(() => (rawTempLogs || []).filter((l) => isToday(l.time)), [rawTempLogs]);
-  const breathLogs = useMemo(() => (rawBreathLogs || []).filter((l) => isToday(l.time)), [rawBreathLogs]);
-  const skinLogs = useMemo(() => (rawSkinLogs || []).filter((l) => isToday(l.time)), [rawSkinLogs]);
+  const tempLogs = useMemo(() => (rawTempLogs || []).filter((l) => isToday(l.time)), [rawTempLogs, dayStart]);
+  const breathLogs = useMemo(() => (rawBreathLogs || []).filter((l) => isToday(l.time)), [rawBreathLogs, dayStart]);
+  const skinLogs = useMemo(() => (rawSkinLogs || []).filter((l) => isToday(l.time)), [rawSkinLogs, dayStart]);
   const highestTemp = tempLogs.length ? Math.max(...tempLogs.map((l) => Number(l.celsius))) : null;
 
-  const breastFeeds = feedLogs.filter((f) => f.type === 'breast');
-  const bottleFeeds = feedLogs.filter((f) => f.type === 'bottle');
-  const totalBreastSecs = breastFeeds.reduce((s, f) => s + (f.totalSecs || 0), 0);
-  // Bottles may be logged in ml or oz; total them in ml.
-  const totalBottleMl = Math.round(
-    bottleFeeds.reduce((s, f) => s + toMl(f.consumedQty ?? f.bottleQty, f.unit), 0)
-  );
-
   const totalSleepSecs = sleepLogs.reduce((s, l) => s + secondsWithinToday(l.startTime, l.endTime), 0);
-  const naps = sleepLogs.filter((l) => l.isNap);
-  const nightSleep = sleepLogs.filter((l) => !l.isNap);
 
-  // Diaper entries are saved with eventType 'urine' | 'stool' | 'both' | 'dry'.
-  const typeOf = (d) => DIAPER_TYPES[d.eventType];
-  const wetDiapers = diaperLogs.filter((d) => typeOf(d)?.wet).length;
-  const stoolDiapers = diaperLogs.filter((d) => typeOf(d)?.stool).length;
-  const dryDiapers = diaperLogs.filter((d) => d.eventType === 'dry').length;
-
-  const medicineGiven = medLogs.filter((m) => m.status === 'given');
-  const medicineSkipped = medLogs.filter((m) => m.status === 'skipped');
+  // Table and charts for the chosen day (a sleep still running counts up to now).
+  const sleepSession = useSleepStore((st) => st.session);
+  const dailyData = useMemo(() => {
+    const running = sleepSession && sleepSession.babyId === babyId && sleepSession.startTime
+      ? [{ startTime: sleepSession.startTime, endTime: sleepSession.endTime }] : [];
+    return buildDailyData({
+      day, now: viewingToday ? new Date() : addDays(day, 1),
+      feeds: rawFeedLogs || [], sleeps: [...(rawSleepLogs || []), ...running], diapers: rawDiaperLogs || [],
+      medicines: rawMedLogs || [], vaccines: rawVaccines || [],
+    });
+  }, [day, viewingToday, babyId, sleepSession, rawFeedLogs, rawSleepLogs, rawDiaperLogs, rawMedLogs, rawVaccines]);
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
@@ -146,17 +156,78 @@ export default function SummaryScreen({ navigation, route }) {
             </TouchableOpacity>
           )}
           <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: C.text }]}>Daily Summary</Text>
-            <Text style={[styles.date, { color: C.textSecondary }]}>{format(new Date(), 'EEEE, MMMM d')}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.title, { color: C.text }]}>{isMonth ? '30-Day Summary' : 'Daily Summary'}</Text>
           </View>
         </View>
 
+        <View style={[styles.modeSwitch, { backgroundColor: C.primaryLight }]}>
+          {[{ key: 'day', label: 'Day' }, { key: 'month', label: '30 Days' }].map((m) => {
+            const active = mode === m.key;
+            return (
+              <TouchableOpacity
+                key={m.key}
+                onPress={() => setMode(m.key)}
+                style={[styles.modeBtn, active && { backgroundColor: C.primary }]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+              >
+                <Text style={[styles.modeText, { color: active ? COLORS.white : C.primary }]} numberOfLines={1} {...TIGHT_TEXT}>{m.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TouchableOpacity
+          onPress={() => setCalendarOpen(true)}
+          style={[styles.datePicker, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}
+          accessibilityRole="button"
+          accessibilityLabel={isMonth
+            ? `Showing 30 days ending ${format(endDate, 'd MMMM')}. Choose another end date`
+            : `Showing ${format(day, 'EEEE d MMMM')}. Choose another day`}
+        >
+          <View style={[styles.dateIcon, { backgroundColor: C.primaryLight }]}>
+            <Ionicons name="calendar-outline" size={20} color={C.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.dateMain, { color: C.text }]}>
+              {isMonth
+                ? (shownIsToday ? 'Last 30 days' : `30 days to ${format(endDate, 'd MMM')}`)
+                : (viewingToday ? 'Today' : format(day, 'EEEE'))}
+            </Text>
+            <Text style={[styles.date, { color: C.textSecondary }]}>
+              {isMonth
+                ? `${format(addDays(endDate, -(RANGE_DAYS - 1)), 'd MMM')} – ${format(endDate, 'd MMM yyyy')}`
+                : format(day, 'd MMMM yyyy')}
+            </Text>
+          </View>
+          {shownIsToday ? null : (
+            <TouchableOpacity
+              onPress={() => setShown(startOfToday())}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={[styles.todayBtn, { backgroundColor: C.primaryLight }]}
+              accessibilityRole="button"
+              accessibilityLabel="Back to today"
+            >
+              <Text style={[styles.todayText, { color: C.primary }]}>Today</Text>
+            </TouchableOpacity>
+          )}
+          <Ionicons name="chevron-down" size={20} color={C.textSecondary} />
+        </TouchableOpacity>
+
+        {isMonth ? (
+          <MonthSummary
+            data={monthData}
+            babyName={baby?.name}
+            C={C}
+            onPickDay={(d) => { setDay(d); setMode('day'); }}
+          />
+        ) : (<>
         {/* Overview hero */}
         <GradientView colors={GRADIENTS.brand} style={[styles.hero, SHADOW.lg]}>
           <View style={styles.heroTop}>
             <View style={styles.heroChip}>
               <Ionicons name="sparkles" size={13} color={COLORS.white} />
-              <Text style={styles.heroChipText}>Today so far</Text>
+              <Text style={styles.heroChipText}>{viewingToday ? 'Today so far' : format(day, 'd MMM yyyy')}</Text>
             </View>
             {baby?.name ? <Text style={styles.heroBaby} numberOfLines={1}>{baby.name}</Text> : null}
           </View>
@@ -170,7 +241,7 @@ export default function SummaryScreen({ navigation, route }) {
                 {i > 0 && <View style={styles.heroDivider} />}
                 <View style={styles.overviewPill}>
                   <Ionicons name={item.icon} size={16} color="rgba(255,255,255,0.9)" />
-                  <Text style={styles.overviewNum} numberOfLines={1}>{item.value}</Text>
+                  <Text style={styles.overviewNum} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{item.value}</Text>
                   <Text style={styles.overviewLabel}>{item.label}</Text>
                 </View>
               </React.Fragment>
@@ -178,129 +249,82 @@ export default function SummaryScreen({ navigation, route }) {
           </View>
         </GradientView>
 
-        {/* Feeding block */}
-        <SummaryBlock icon="nutrition" color={COLORS.feeding} bg={C.feedingLight} title="Feeding" C={C}>
-          <StatRow label="Total feeds" value={feedLogs.length} C={C} />
-          {breastFeeds.length > 0 && (
-            <StatRow label="Breastfeed sessions" value={`${breastFeeds.length} · ${formatDuration(totalBreastSecs)}`} C={C} />
-          )}
-          {bottleFeeds.length > 0 && (
-            <StatRow label="Bottle feeds (consumed)" value={`${bottleFeeds.length} · ${totalBottleMl} ml`} C={C} />
-          )}
-          {feedLogs.length === 0 && (
-            <Text style={[styles.emptyNote, { color: C.textMuted }]}>No feeds logged today</Text>
-          )}
-        </SummaryBlock>
+        {/* Same layout as the downloaded report */}
+        <DailyReport data={dailyData} C={C} darkMode={darkMode} onDay={onDay} />
 
-        {/* Sleep block */}
-        <SummaryBlock icon="moon" color={COLORS.sleep} bg={C.sleepLight} title="Sleep" C={C}>
-          <StatRow label="Total sleep (since midnight)" value={totalSleepSecs > 0 ? formatDuration(totalSleepSecs) : '—'} C={C} />
-          <StatRow label="Naps" value={naps.length} C={C} />
-          <StatRow label="Night sleep" value={nightSleep.length} C={C} />
-          <StatRow label="Total wakeups" value={sleepLogs.reduce((s, l) => s + (l.wakeups || 0), 0)} C={C} />
-          {sleepLogs.length === 0 && (
-            <Text style={[styles.emptyNote, { color: C.textMuted }]}>No sleep logged today</Text>
-          )}
-        </SummaryBlock>
-
-        {/* Diaper block */}
-        <SummaryBlock icon="water" color={COLORS.diaper} bg={C.diaperLight} title="Diapers" C={C}>
-          <StatRow label="Total diapers" value={diaperLogs.length} C={C} />
-          <StatRow label="Wet (urine or both)" value={wetDiapers} C={C} />
-          <StatRow label="Stool (stool or both)" value={stoolDiapers} C={C} />
-          <StatRow label="Dry" value={dryDiapers} C={C} />
-          {diaperLogs.length === 0 && (
-            <Text style={[styles.emptyNote, { color: C.textMuted }]}>No diapers logged today</Text>
-          )}
-        </SummaryBlock>
-
-        {/* Medicine block */}
-        {medLogs.length > 0 && (
-          <SummaryBlock icon="medical" color={COLORS.medicine} bg={C.medicineLight} title="Medicine" C={C}>
-            <StatRow label="Given today" value={medicineGiven.length} C={C} />
-            {medicineGiven.map((m) => (
-              <StatRow key={m.id} label={`${m.name} · ${formatTime(m.time)}`} value={`${m.dose || '—'} ${m.unit}`} C={C} />
-            ))}
-            {medicineSkipped.length > 0 && (
-              <>
-                <StatRow label="Skipped today" value={medicineSkipped.length} C={C} />
-                {medicineSkipped.map((m) => (
-                  <StatRow key={m.id} label={`${m.name} · ${formatTime(m.time)}`} value="Skipped" C={C} />
-                ))}
-              </>
-            )}
-          </SummaryBlock>
-        )}
-
-        {/* Temperature block */}
-        <SummaryBlock mci="thermometer" color={C.primary} bg={C.primaryLight} title="Temperature" C={C}>
-          <StatRow label="Readings" value={tempLogs.length} C={C} />
-          {highestTemp != null ? (
-            <StatRow
-              label="Highest today"
-              value={`${highestTemp.toFixed(1)} °C`}
-              level={temperatureStatus(highestTemp)?.level}
-              C={C}
-            />
-          ) : null}
-          {tempLogs.map((l) => {
-            const st = temperatureStatus(Number(l.celsius));
-            return (
-              <StatRow
-                key={l.id}
-                label={`${formatTime(l.time)} · ${labelOf(TEMP_METHODS, l.method) || ''}`}
-                value={`${Number(l.celsius).toFixed(1)} °C · ${LEVEL_WORD[st?.level] || ''}`}
-                level={st?.level}
-                C={C}
-              />
-            );
-          })}
-          {tempLogs.length === 0 && (
-            <Text style={[styles.emptyNote, { color: C.textMuted }]}>No temperature logged today</Text>
-          )}
-        </SummaryBlock>
-
-        {/* Breathing block */}
-        <SummaryBlock mci="lungs" color={C.primary} bg={C.primaryLight} title="Breathing" C={C}>
-          <StatRow label="Checks" value={breathLogs.length} C={C} />
-          {breathLogs.map((l) => {
-            const st = breathingStatus(l.rate != null ? Number(l.rate) : null, l.signs || []);
-            const signs = (l.signs || []).map((v) => labelOf(BREATHING_SIGNS, v)).filter(Boolean).join(', ');
-            return (
-              <StatRow
-                key={l.id}
-                label={`${formatTime(l.time)}${signs ? ` · ${signs}` : ''}`}
-                value={`${l.rate != null ? `${l.rate}/min` : 'Signs'} · ${LEVEL_WORD[st?.level] || ''}`}
-                level={st?.level}
-                C={C}
-              />
-            );
-          })}
-          {breathLogs.length === 0 && (
-            <Text style={[styles.emptyNote, { color: C.textMuted }]}>No breathing checks today</Text>
-          )}
-        </SummaryBlock>
-
-        {/* Skin & jaundice block */}
-        <SummaryBlock mci="face-man-shimmer-outline" color={C.primary} bg={C.primaryLight} title="Skin & Jaundice" C={C}>
-          <StatRow label="Checks" value={skinLogs.length} C={C} />
-          {skinLogs.map((l) => {
-            const st = skinStatus(l.yellow, l.signs || []);
-            const signs = (l.signs || []).map((v) => labelOf(SKIN_SIGNS, v)).filter(Boolean).join(', ');
-            return (
-              <StatRow
-                key={l.id}
-                label={`${formatTime(l.time)}${signs ? ` · ${signs}` : ''}`}
-                value={`${labelOf(JAUNDICE_LEVELS, l.yellow) || 'Skin changes'} · ${LEVEL_WORD[st?.level] || ''}`}
-                level={st?.level}
-                C={C}
-              />
-            );
-          })}
-          {skinLogs.length === 0 && (
-            <Text style={[styles.emptyNote, { color: C.textMuted }]}>No skin checks today</Text>
-          )}
-        </SummaryBlock>
+        {/* Other checks: cards with records first, empty ones below */}
+        <SortedBlocks blocks={[
+          { key: 'temperature', has: tempLogs.length > 0, node: (
+            <SummaryBlock mci="thermometer" color={C.primary} bg={C.primaryLight} title="Temperature" C={C}>
+              <StatRow label="Readings" value={tempLogs.length} C={C} />
+              {highestTemp != null ? (
+                <StatRow
+                  label={viewingToday ? 'Highest today' : 'Highest'}
+                  value={`${highestTemp.toFixed(1)} °C`}
+                  level={temperatureStatus(highestTemp)?.level}
+                  C={C}
+                />
+              ) : null}
+              {tempLogs.map((l) => {
+                const st = temperatureStatus(Number(l.celsius));
+                return (
+                  <StatRow
+                    key={l.id}
+                    label={`${formatTime(l.time)} · ${labelOf(TEMP_METHODS, l.method) || ''}`}
+                    value={`${Number(l.celsius).toFixed(1)} °C · ${LEVEL_WORD[st?.level] || ''}`}
+                    level={st?.level}
+                    C={C}
+                  />
+                );
+              })}
+              {tempLogs.length === 0 && (
+                <Text style={[styles.emptyNote, { color: C.textMuted }]}>{`No temperature logged ${onDay}`}</Text>
+              )}
+            </SummaryBlock>
+          ) },
+          { key: 'breathing', has: breathLogs.length > 0, node: (
+            <SummaryBlock mci="lungs" color={C.primary} bg={C.primaryLight} title="Breathing" C={C}>
+              <StatRow label="Checks" value={breathLogs.length} C={C} />
+              {breathLogs.map((l) => {
+                const st = breathingStatus(l.rate != null ? Number(l.rate) : null, l.signs || []);
+                const signs = (l.signs || []).map((v) => labelOf(BREATHING_SIGNS, v)).filter(Boolean).join(', ');
+                return (
+                  <StatRow
+                    key={l.id}
+                    label={`${formatTime(l.time)}${signs ? ` · ${signs}` : ''}`}
+                    value={`${l.rate != null ? `${l.rate}/min` : 'Signs'} · ${LEVEL_WORD[st?.level] || ''}`}
+                    level={st?.level}
+                    C={C}
+                  />
+                );
+              })}
+              {breathLogs.length === 0 && (
+                <Text style={[styles.emptyNote, { color: C.textMuted }]}>{`No breathing checks ${onDay}`}</Text>
+              )}
+            </SummaryBlock>
+          ) },
+          { key: 'skin', has: skinLogs.length > 0, node: (
+            <SummaryBlock mci="face-man-shimmer-outline" color={C.primary} bg={C.primaryLight} title="Skin & Jaundice" C={C}>
+              <StatRow label="Checks" value={skinLogs.length} C={C} />
+              {skinLogs.map((l) => {
+                const st = skinStatus(l.yellow, l.signs || []);
+                const signs = (l.signs || []).map((v) => labelOf(SKIN_SIGNS, v)).filter(Boolean).join(', ');
+                return (
+                  <StatRow
+                    key={l.id}
+                    label={`${formatTime(l.time)}${signs ? ` · ${signs}` : ''}`}
+                    value={`${labelOf(JAUNDICE_LEVELS, l.yellow) || 'Skin changes'} · ${LEVEL_WORD[st?.level] || ''}`}
+                    level={st?.level}
+                    C={C}
+                  />
+                );
+              })}
+              {skinLogs.length === 0 && (
+                <Text style={[styles.emptyNote, { color: C.textMuted }]}>{`No skin checks ${onDay}`}</Text>
+              )}
+            </SummaryBlock>
+          ) },
+        ]} />
 
         {/* Guidance */}
         <View style={[styles.hintCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
@@ -309,10 +333,20 @@ export default function SummaryScreen({ navigation, route }) {
           </View>
           <Text style={[styles.hintText, { color: C.textSecondary }]}>
             Newborns typically need 8–12 feeds, 6–8 wet diapers, and 14–17h sleep per 24 hours.
-            Today's numbers only count since midnight. Ask your doctor if you are worried.
+            {viewingToday ? "Today's numbers only count since midnight." : 'Numbers cover the whole day.'} Ask your doctor if you are worried.
           </Text>
         </View>
+        </>)}
       </ScrollView>
+
+      <CalendarModal
+        visible={calendarOpen}
+        value={shown}
+        title={isMonth ? 'Choose end date' : 'Choose a day'}
+        C={C}
+        onClose={() => setCalendarOpen(false)}
+        onSelect={(d) => { setShown(d); setCalendarOpen(false); }}
+      />
     </View>
   );
 }
@@ -327,6 +361,17 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.8 },
   date: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
+  modeSwitch: { flexDirection: 'row', borderRadius: RADIUS.full, padding: 4, marginBottom: SPACING.md },
+  modeBtn: { flex: 1, minHeight: 42, paddingVertical: 6, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
+  modeText: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
+  datePicker: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60,
+    padding: 12, borderRadius: RADIUS.xl, borderWidth: 1, marginBottom: SPACING.lg,
+  },
+  dateIcon: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  dateMain: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.heavy },
+  todayBtn: { paddingHorizontal: 14, minHeight: 34, paddingVertical: 4, borderRadius: RADIUS.full, justifyContent: 'center' },
+  todayText: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
   hero: { borderRadius: RADIUS.xxl, padding: SPACING.lg, marginBottom: SPACING.lg },
   heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACING.sm },
   heroChip: {
@@ -341,16 +386,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: RADIUS.xl, paddingVertical: 14,
   },
   overviewPill: { flex: 1, alignItems: 'center', paddingHorizontal: 4, gap: 2 },
-  overviewNum: { fontSize: 22, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.4 },
+  overviewNum: { fontSize: fs(22), fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.4 },
   overviewLabel: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: 'rgba(255,255,255,0.85)' },
   heroDivider: { width: 1, height: 36, backgroundColor: 'rgba(255,255,255,0.3)' },
-  block: { borderRadius: RADIUS.xl, borderWidth: 1, padding: SPACING.md, marginBottom: SPACING.md, gap: 12 },
-  blockHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 2 },
-  blockIcon: { width: 44, height: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  blockTitle: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
-  statRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: SPACING.sm },
-  statLabel: { flex: 1, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium },
-  statVal: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.heavy },
   emptyNote: { fontSize: FONT_SIZE.sm, textAlign: 'center', paddingVertical: 4 },
   hintCard: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.md, padding: SPACING.md, borderRadius: RADIUS.xl, borderWidth: 1 },
   hintIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },

@@ -8,9 +8,10 @@ import { Ionicons } from '@expo/vector-icons';
 
 import GradientView from './GradientView';
 import { COLORS, GRADIENTS } from '../constants/colors';
-import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
+import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW, MAX_CONTENT_WIDTH, fs } from '../constants/theme';
 
-const { width: W } = Dimensions.get('window');
+// The app sits in a centred column on wide screens, so size from that column's width.
+const W = Math.min(Dimensions.get('window').width, MAX_CONTENT_WIDTH);
 
 // Page frame shared by the login, registration and verification screens.
 export function AuthScreen({ onBack, children, footer }) {
@@ -325,6 +326,6 @@ const styles = StyleSheet.create({
   otpBoxFilled: { borderColor: COLORS.primary + '66', backgroundColor: COLORS.primaryLight },
   otpBoxActive: { borderColor: COLORS.primary, borderWidth: 2 },
   otpBoxError: { borderColor: COLORS.error },
-  otpDigit: { fontSize: 24, fontWeight: FONT_WEIGHT.heavy, color: COLORS.text },
+  otpDigit: { fontSize: fs(24), fontWeight: FONT_WEIGHT.heavy, color: COLORS.text },
   otpHidden: { position: 'absolute', opacity: 0, width: 1, height: 1 },
 });

@@ -9,7 +9,7 @@ import * as Haptics from 'expo-haptics';
 import { useBabyStore } from '../store/useBabyStore';
 import { useDiaperStore, URINE_COLORS, STOOL_COLORS, findColor } from '../store/useDiaperStore';
 import { COLORS } from '../constants/colors';
-import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING } from '../constants/theme';
+import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, fs } from '../constants/theme';
 
 // Local palette for this screen, taken from the user's approved screenshot.
 const SHOT_LIGHT = { blue: '#006BFD', blueText: '#0058D4', tile: '#DAE9FE', hero: '#EBF3FE', card: '#EEF4FE', surface: '#FFFFFF', text: '#032049', textSecondary: '#5A6690', border: '#E1EAFB', background: '#FBFBFE' };
@@ -259,7 +259,7 @@ export default function DiaperScreen({ navigation }) {
             <Ionicons name="arrow-back" size={22} color={S.blue} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: S.text }]}>Diaper Log</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.title, { color: S.text }]}>Diaper Log</Text>
             <Text style={[styles.subtitle, { color: S.textSecondary }]}>Urine, stool & changes</Text>
           </View>
           <TouchableOpacity
@@ -560,8 +560,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: SPACING.lg,
   },
   headerBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 28, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
-  subtitle: { fontSize: 15, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
+  title: { fontSize: fs(28), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  subtitle: { fontSize: fs(15), fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
 
   hero: { borderRadius: 28, padding: 20, marginBottom: SPACING.lg },
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
@@ -570,24 +570,24 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   heroTitle: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.4 },
-  heroSub: { fontSize: 15, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
+  heroSub: { fontSize: fs(15), fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
   heroChips: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
   heroChip: {
     flex: 1, alignItems: 'center', paddingVertical: 12, gap: 2,
     borderRadius: 20, borderWidth: 1,
   },
   heroChipValue: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.heavy, lineHeight: 28 },
-  heroChipLabel: { fontSize: 13, fontWeight: FONT_WEIGHT.semibold },
+  heroChipLabel: { fontSize: fs(13), fontWeight: FONT_WEIGHT.semibold },
   disabled: { opacity: 0.45 },
 
   toast: {
     flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, minHeight: 48,
     padding: 14, borderRadius: RADIUS.full, marginBottom: SPACING.md,
   },
-  toastText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold },
+  toastText: { fontSize: fs(15), fontWeight: FONT_WEIGHT.bold },
 
   sectionTitle: {
-    fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3, marginBottom: 12,
+    fontSize: fs(22), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3, marginBottom: 12,
   },
   historyTitle: { marginTop: SPACING.sm },
 
@@ -600,7 +600,7 @@ const styles = StyleSheet.create({
     width: 52, height: 52, borderRadius: 16,
     alignItems: 'center', justifyContent: 'center',
   },
-  eventLabel: { fontSize: 15, fontWeight: FONT_WEIGHT.bold },
+  eventLabel: { fontSize: fs(15), fontWeight: FONT_WEIGHT.bold },
 
   confirmCard: {
     borderRadius: 28, paddingVertical: 8,
@@ -614,7 +614,7 @@ const styles = StyleSheet.create({
     width: 48, height: 48, borderRadius: 14, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
-  confirmType: { flex: 1, fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
+  confirmType: { flex: 1, fontSize: fs(22), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
 
   section: { paddingHorizontal: SPACING.md, paddingTop: SPACING.md },
   sectionLbl: {
@@ -627,7 +627,7 @@ const styles = StyleSheet.create({
     minHeight: 56, minWidth: 64, paddingHorizontal: 12,
     borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center',
   },
-  adjText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold },
+  adjText: { fontSize: fs(15), fontWeight: FONT_WEIGHT.bold },
   timeInput: {
     flex: 1, minHeight: 56, borderRadius: 16, borderWidth: 1.5,
     textAlign: 'center', fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy,
@@ -638,7 +638,7 @@ const styles = StyleSheet.create({
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, minHeight: 56, borderRadius: 20, borderWidth: 1,
   },
-  yesNoText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold },
+  yesNoText: { fontSize: fs(15), fontWeight: FONT_WEIGHT.bold },
 
   errorText: {
     fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold,
@@ -650,7 +650,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     minHeight: 56, paddingHorizontal: SPACING.lg, borderRadius: RADIUS.full, gap: 10,
   },
-  saveBtnText: { fontSize: 18, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.2 },
+  saveBtnText: { fontSize: fs(18), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.2 },
 
   insightCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1,
@@ -660,7 +660,7 @@ const styles = StyleSheet.create({
     width: 36, height: 36, borderRadius: 12,
     alignItems: 'center', justifyContent: 'center',
   },
-  insightText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold, flex: 1 },
+  insightText: { fontSize: fs(15), fontWeight: FONT_WEIGHT.bold, flex: 1 },
 
   logItem: {
     flexDirection: 'row', alignItems: 'center', gap: 16,
@@ -671,10 +671,10 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   logTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
-  logTitle: { fontSize: 17, fontWeight: FONT_WEIGHT.bold },
+  logTitle: { fontSize: fs(17), fontWeight: FONT_WEIGHT.bold },
   delayBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.full },
-  delayBadgeText: { fontSize: 13, fontWeight: FONT_WEIGHT.bold },
-  logSub: { fontSize: 15 },
+  delayBadgeText: { fontSize: fs(13), fontWeight: FONT_WEIGHT.bold },
+  logSub: { fontSize: fs(15) },
   colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   colorChip: {
     flexDirection: 'row', alignItems: 'center', gap: 7,

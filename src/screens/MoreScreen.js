@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -10,6 +10,8 @@ import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/th
 import { calcAge } from '../utils/formatters';
 import { useAuthStore } from '../store/useAuthStore';
 import { openSwitchClient } from '../lib/switchClientFlow';
+import { exportReport, openReport } from '../lib/reportPdf';
+import ExportSheet from '../components/ExportSheet';
 
 function MenuSection({ title, items, C }) {
   return (
@@ -51,12 +53,35 @@ function MenuSection({ title, items, C }) {
 }
 
 export default function MoreScreen({ navigation }) {
-  const { getActiveBaby, darkMode } = useBabyStore();
+  const { getActiveBaby, darkMode, babies, activeBabyId } = useBabyStore();
   const baby = getActiveBaby();
   const C = darkMode ? DARK_COLORS : COLORS;
   const client = useAuthStore((s) => s.client);
   const user = useAuthStore((s) => s.user);
   const insets = useSafeAreaInsets();
+
+  // Export: choose the baby (when there are several) and the report, then save the PDF
+  // and offer to open it.
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const runExport = async (babyId, kind) => {
+    setExportOpen(false);
+    setExporting(true);
+    try {
+      const file = await exportReport(kind, babyId);
+      Alert.alert('Download complete', file.name, [
+        { text: 'Close', style: 'cancel' },
+        {
+          text: 'Open',
+          onPress: () => openReport(file.uri).catch((err) => Alert.alert('Could not open the report', err?.message || 'Please try again.')),
+        },
+      ]);
+    } catch (err) {
+      Alert.alert('Could not create the report', err?.message || 'Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
@@ -114,6 +139,19 @@ export default function MoreScreen({ navigation }) {
           ]}
         />
 
+        <MenuSection
+          title="REPORTS"
+          C={C}
+          items={[
+            {
+              label: 'Export Data',
+              sub: exporting ? 'Preparing report…' : "Today's or 30-day report as PDF",
+              icon: 'download',
+              onPress: () => { if (!exporting) setExportOpen(true); },
+            },
+          ]}
+        />
+
         {user?.role === 'client' ? null : (
         <MenuSection
           title="CLIENT"
@@ -135,7 +173,7 @@ export default function MoreScreen({ navigation }) {
           items={[
             {
               label: 'Settings',
-              sub: 'Dark mode, baby profiles, data',
+              sub: 'Dark mode, baby profiles, account',
               icon: 'settings',
               color: COLORS.textSecondary,
               onPress: () => navigation.navigate('Settings'),
@@ -145,6 +183,15 @@ export default function MoreScreen({ navigation }) {
 
         <Text style={[styles.version, { color: C.textMuted }]}>Cradlewell Bloom v1.0 · Your comfort is our care</Text>
       </ScrollView>
+
+      <ExportSheet
+        visible={exportOpen}
+        babies={babies}
+        activeBabyId={activeBabyId}
+        C={C}
+        onClose={() => setExportOpen(false)}
+        onChoose={runExport}
+      />
     </View>
   );
 }

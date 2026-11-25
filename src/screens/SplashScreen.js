@@ -5,7 +5,7 @@ import { useBabyStore } from '../store/useBabyStore';
 import { startSession, loadClientData } from '../lib/session';
 import { COLORS, GRADIENTS } from '../constants/colors';
 import GradientView from '../components/GradientView';
-import { FONT_SIZE, FONT_WEIGHT } from '../constants/theme';
+import { FONT_SIZE, FONT_WEIGHT, fs } from '../constants/theme';
 
 export default function SplashScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -92,7 +92,7 @@ const styles = StyleSheet.create({
     height: 96,
   },
   appName: {
-    fontSize: 34,
+    fontSize: fs(34),
     fontWeight: FONT_WEIGHT.heavy,
     color: COLORS.white,
     letterSpacing: -0.8,

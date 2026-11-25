@@ -9,7 +9,7 @@ import * as Haptics from 'expo-haptics';
 import { useBabyStore } from '../store/useBabyStore';
 import { useSleepStore, classifyIsNap } from '../store/useSleepStore';
 import { COLORS } from '../constants/colors';
-import { FONT_WEIGHT, RADIUS, SPACING } from '../constants/theme';
+import { FONT_WEIGHT, RADIUS, SPACING, fs } from '../constants/theme';
 import { formatDurationMins, formatDuration, formatRelative, formatTime } from '../utils/formatters';
 
 // Local palette for this screen, taken from the user's approved screenshot.
@@ -36,7 +36,7 @@ function SleepTimer({ S, session, onRequestEnd, onCancel }) {
         <Text style={[styles.heroPillText, { color: S.text }]}>{isNap ? 'Nap' : 'Night Sleep'}</Text>
       </View>
 
-      <Text style={[styles.bigTimer, { color: S.text }]}>
+      <Text style={[styles.bigTimer, { color: S.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
         {formatDurationMins(elapsed)}
       </Text>
       <Text style={[styles.timerSub, { color: S.textSecondary }]}>
@@ -161,7 +161,7 @@ export default function SleepScreen({ navigation }) {
             <Ionicons name="moon-outline" size={30} color={S.blue} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.screenTitle, { color: S.text }]}>Sleep</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.screenTitle, { color: S.text }]}>Sleep</Text>
             <Text style={[styles.screenSub, { color: S.textSecondary }]}>
               {todaySecs > 0 ? `${formatDuration(todaySecs)} today` : 'No sleep logged yet'}
             </Text>
@@ -321,16 +321,16 @@ const styles = StyleSheet.create({
   // Header
   screenHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: SPACING.lg },
   headerIcon: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  screenTitle: { fontSize: 28, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
-  screenSub: { fontSize: 15, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
+  screenTitle: { fontSize: fs(28), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  screenSub: { fontSize: fs(15), fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
   headerBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
 
   successToast: {
     flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, minHeight: 48,
     borderRadius: RADIUS.full, borderWidth: 1, marginBottom: SPACING.md,
   },
-  successText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold },
-  sectionTitle: { fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3, marginBottom: 12 },
+  successText: { fontSize: fs(15), fontWeight: FONT_WEIGHT.bold },
+  sectionTitle: { fontSize: fs(22), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3, marginBottom: 12 },
 
   // Main light-blue card (timer / wake-up / start)
   hero: { borderRadius: 28, padding: 20, gap: SPACING.md },
@@ -339,24 +339,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS.full,
   },
-  heroPillText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold },
+  heroPillText: { fontSize: fs(15), fontWeight: FONT_WEIGHT.bold },
   liveDot: { width: 8, height: 8, borderRadius: 4 },
-  bigTimer: { fontSize: 64, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -2, fontVariant: ['tabular-nums'] },
-  timerSub: { fontSize: 15, fontWeight: FONT_WEIGHT.medium, marginTop: -8, textAlign: 'center' },
+  bigTimer: { fontSize: fs(64), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -2, fontVariant: ['tabular-nums'] },
+  timerSub: { fontSize: fs(15), fontWeight: FONT_WEIGHT.medium, marginTop: -8, textAlign: 'center' },
 
   // Wake-up form
   heroIconTile: { width: 64, height: 64, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  wakeupFormTitle: { fontSize: 32, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.5 },
+  wakeupFormTitle: { fontSize: fs(32), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.5 },
   wakeupTextWrap: { alignItems: 'center', gap: 6, marginTop: -4 },
-  wakeupFormRange: { fontSize: 18, fontWeight: FONT_WEIGHT.semibold, textAlign: 'center' },
-  wakeupFormQuestion: { fontSize: 17, fontWeight: FONT_WEIGHT.bold, textAlign: 'center' },
+  wakeupFormRange: { fontSize: fs(18), fontWeight: FONT_WEIGHT.semibold, textAlign: 'center' },
+  wakeupFormQuestion: { fontSize: fs(17), fontWeight: FONT_WEIGHT.bold, textAlign: 'center' },
   stepperRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xl, marginVertical: SPACING.sm },
   stepBtn: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
   stepCount: {
-    fontSize: 56, fontWeight: FONT_WEIGHT.heavy, minWidth: 64, textAlign: 'center', fontVariant: ['tabular-nums'],
+    fontSize: fs(56), fontWeight: FONT_WEIGHT.heavy, minWidth: 64, textAlign: 'center', fontVariant: ['tabular-nums'],
   },
   linkBtn: { minHeight: 48, justifyContent: 'center', paddingHorizontal: SPACING.md },
-  heroLink: { fontSize: 17, fontWeight: FONT_WEIGHT.semibold },
+  heroLink: { fontSize: fs(17), fontWeight: FONT_WEIGHT.semibold },
 
   // Buttons
   sleepControls: { flexDirection: 'row', gap: 12, width: '100%' },
@@ -364,14 +364,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     minHeight: 56, paddingHorizontal: SPACING.lg, borderRadius: RADIUS.full, gap: 10,
   },
-  primaryBtnText: { fontSize: 18, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.2 },
+  primaryBtnText: { fontSize: fs(18), fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.2 },
   controlPrimary: { flex: 2, paddingHorizontal: 12 },
   fullWidth: { width: '100%' },
   tertiaryBtn: {
     flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 56,
     borderRadius: RADIUS.full, borderWidth: 1,
   },
-  tertiaryBtnText: { fontSize: 17, fontWeight: FONT_WEIGHT.bold },
+  tertiaryBtnText: { fontSize: fs(17), fontWeight: FONT_WEIGHT.bold },
 
   // Start
   startWrap: { gap: SPACING.md },
@@ -380,9 +380,9 @@ const styles = StyleSheet.create({
   infoTileIcon: {
     width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 10,
   },
-  infoValue: { fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.5 },
-  infoLabel: { fontSize: 13, fontWeight: FONT_WEIGHT.semibold, marginTop: 2 },
-  hint: { textAlign: 'center', fontSize: 14, paddingHorizontal: SPACING.md },
+  infoValue: { fontSize: fs(22), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.5 },
+  infoLabel: { fontSize: fs(13), fontWeight: FONT_WEIGHT.semibold, marginTop: 2 },
+  hint: { textAlign: 'center', fontSize: fs(14), paddingHorizontal: SPACING.md },
 
   // Log items
   logItem: {
@@ -392,9 +392,9 @@ const styles = StyleSheet.create({
   logIcon: {
     width: 48, height: 48, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center',
   },
-  logTitle: { fontSize: 17, fontWeight: FONT_WEIGHT.bold },
-  logSub: { fontSize: 15, marginTop: 2 },
-  logTime: { fontSize: 14, fontWeight: FONT_WEIGHT.medium, alignSelf: 'flex-start', marginTop: 2 },
+  logTitle: { fontSize: fs(17), fontWeight: FONT_WEIGHT.bold },
+  logSub: { fontSize: fs(15), marginTop: 2 },
+  logTime: { fontSize: fs(14), fontWeight: FONT_WEIGHT.medium, alignSelf: 'flex-start', marginTop: 2 },
 
   // Timer running for another baby
   otherBaby: {
@@ -402,7 +402,7 @@ const styles = StyleSheet.create({
     padding: 14, borderRadius: 24, marginBottom: SPACING.md,
   },
   otherBabyIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  otherBabyText: { flex: 1, fontSize: 15, fontWeight: FONT_WEIGHT.semibold },
+  otherBabyText: { flex: 1, fontSize: fs(15), fontWeight: FONT_WEIGHT.semibold },
   otherBabyBtn: { minHeight: 48, justifyContent: 'center', paddingHorizontal: 20, borderRadius: RADIUS.full },
-  otherBabyBtnText: { color: COLORS.white, fontWeight: FONT_WEIGHT.heavy, fontSize: 15 },
+  otherBabyBtnText: { color: COLORS.white, fontWeight: FONT_WEIGHT.heavy, fontSize: fs(15) },
 });

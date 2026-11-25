@@ -53,7 +53,6 @@ export default function SettingsScreen({ navigation }) {
   const errorTint = darkMode ? COLORS.error + '22' : COLORS.errorLight;
   const user = useAuthStore((s) => s.user);
   const client = useAuthStore((s) => s.client);
-  const clientName = client?.name || 'this client';
 
   // Changes saved offline and not yet sent would be lost when leaving the client.
   const confirmLeave = async (title, message, actionLabel, action, nextRoute) => {
@@ -87,13 +86,6 @@ export default function SettingsScreen({ navigation }) {
 
   const handleSwitchClient = () => openSwitchClient(navigation);
 
-  const handleExport = () => {
-    Alert.alert(
-      'Export Data',
-      `Records for ${clientName} are stored securely on the Cradlewell server and cached on this device. An export feature is coming in a future update.`,
-      [{ text: 'OK' }]
-    );
-  };
 
   const handleResetOnboarding = () => {
     Alert.alert(
@@ -156,7 +148,7 @@ export default function SettingsScreen({ navigation }) {
             <Ionicons name="chevron-back" size={22} color={C.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: C.text }]}>Settings</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.title, { color: C.text }]}>Settings</Text>
             <Text style={[styles.subtitle, { color: C.textSecondary }]}>Profiles, display & data</Text>
           </View>
         </View>
@@ -264,16 +256,6 @@ export default function SettingsScreen({ navigation }) {
           <View style={[styles.groupCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
             <SettingRow
               C={C}
-              icon="download-outline"
-              gradient={GRADIENTS.growth}
-              label="Export Data"
-              sub="Coming soon"
-              onPress={handleExport}
-              right={<Ionicons name="chevron-forward" size={16} color={C.textMuted} />}
-            />
-            <View style={[styles.divider, { backgroundColor: C.border }]} />
-            <SettingRow
-              C={C}
               icon="person-add-outline"
               gradient={GRADIENTS.brand}
               label="Add Another Baby"
@@ -336,6 +318,7 @@ export default function SettingsScreen({ navigation }) {
           Cradlewell Bloom v1.0.0{'\n'}Your comfort is our care
         </Text>
       </ScrollView>
+
     </View>
   );
 }

@@ -6,7 +6,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import GradientView from './GradientView';
 import { useBabyStore } from '../store/useBabyStore';
 import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
-import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
+import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW, fs } from '../constants/theme';
 
 // Shared pieces for the health tracking screens (temperature, breathing, skin, milestones,
 // health alerts), in the Cradlewell brand UI.
@@ -43,7 +43,7 @@ export function Screen({ title, subtitle, onBack, children }) {
             <Ionicons name="arrow-back" size={22} color={C.primary} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: C.text }]}>{title}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.title, { color: C.text }]}>{title}</Text>
             {subtitle ? <Text style={[styles.subtitle, { color: C.textSecondary }]}>{subtitle}</Text> : null}
           </View>
         </View>
@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   heroLabel: { color: COLORS.white, fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
-  heroValue: { color: COLORS.white, fontSize: 34, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.8 },
+  heroValue: { color: COLORS.white, fontSize: fs(34), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.8 },
   heroUnit: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.bold },
   heroNote: { color: COLORS.white, fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold, marginTop: 2 },
 

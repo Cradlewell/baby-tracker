@@ -22,7 +22,10 @@ const withinHours = (l, hours, now) => now - eventTime(l) <= hours * HOUR;
 
 export function healthCheck({ baby, feeds = [], diapers = [], medicines = [], vaccines = [], temperatures = [], breathing = [], skin = [], now = Date.now() }) {
   const alerts = [];
-  const add = (level, id, title, detail, route) => alerts.push({ id, level, title, detail, route });
+  // `at`: when the cause happened (for "2h ago"). `anchor`: what caused it, so a new cause
+  // (a new reading, a new late dose) counts as a new notification.
+  const add = (level, id, title, detail, route, at = null, anchor = null) =>
+    alerts.push({ id, level, title, detail, route, at, anchor });
 
   const midnight = new Date(now);
   midnight.setHours(0, 0, 0, 0);
@@ -46,7 +49,7 @@ export function healthCheck({ baby, feeds = [], diapers = [], medicines = [], va
     const gapH = (now - lastFeed) / HOUR;
     if (gapH >= 4) {
       add('attention', 'feed-gap', 'Long gap since last feed',
-        `No feed logged for ${Math.floor(gapH)} hours. Newborns usually feed every 2 to 3 hours.`, 'Feeding');
+        `No feed logged for ${Math.floor(gapH)} hours. Newborns usually feed every 2 to 3 hours.`, 'Feeding', lastFeed, lastFeed);
     }
   }
 
@@ -58,7 +61,12 @@ export function healthCheck({ baby, feeds = [], diapers = [], medicines = [], va
     const lastWetH = wet.length ? (now - Math.max(...wet.map(eventTime))) / HOUR : null;
     if (lastWetH != null && lastWetH >= 8) {
       add('urgent', 'no-wet', 'No wet diaper for a long time',
-        `No wet diaper logged for ${Math.floor(lastWetH)} hours. This can be a sign of dehydration: contact the doctor.`, 'Diaper');
+        `No wet diaper logged for ${Math.floor(lastWetH)} hours. This can be a sign of dehydration: contact the doctor.`, 'Diaper',
+        now - lastWetH * HOUR, `no-wet-${now - lastWetH * HOUR}`);
+    } else if (lastWetH != null && lastWetH >= 6) {
+      add('attention', 'wet-gap', 'No wet diaper for 6 hours',
+        `No wet diaper logged for ${Math.floor(lastWetH)} hours. Offer a feed and check the diaper.`, 'Diaper',
+        now - lastWetH * HOUR, now - lastWetH * HOUR);
     } else if (hoursToday >= 8 && wetToday < expectedWet * 0.6) {
       add('attention', 'wet-low', 'Fewer wet diapers',
         `${wetToday} wet diaper${wetToday === 1 ? '' : 's'} so far today; about ${expectedWet} is usual by now. Offer feeds and watch the next diapers.`, 'Diaper');
@@ -73,7 +81,8 @@ export function healthCheck({ baby, feeds = [], diapers = [], medicines = [], va
     for (const [c, kind] of [[u, 'urine'], [st, 'stool']]) {
       if (!c?.warn) continue;
       const urgent = c.value === 'red' || c.value === 'pale' || c.value === 'black';
-      add(urgent ? 'urgent' : 'attention', `colour-${kind}-${c.value}`, `${kind === 'urine' ? 'Urine' : 'Stool'} colour: ${c.label}`, c.warn, 'Diaper');
+      add(urgent ? 'urgent' : 'attention', `colour-${kind}-${c.value}`, `${kind === 'urine' ? 'Urine' : 'Stool'} colour: ${c.label}`, c.warn, 'Diaper',
+        eventTime(l), l.id);
     }
   }
 
@@ -83,27 +92,29 @@ export function healthCheck({ baby, feeds = [], diapers = [], medicines = [], va
 
   const t = latest(temperatures, 24);
   const ts = t && temperatureStatus(Number(t.celsius));
-  if (ts && ts.level !== 'normal') add(ts.level, 'temperature', `Temperature ${Number(t.celsius).toFixed(1)} °C`, ts.text, 'Temperature');
+  if (ts && ts.level !== 'normal') add(ts.level, 'temperature', `Temperature ${Number(t.celsius).toFixed(1)} °C`, ts.text, 'Temperature', eventTime(t), t.id);
 
   const b = latest(breathing, 24);
   const bs = b && breathingStatus(b.rate != null ? Number(b.rate) : null, b.signs || []);
-  if (bs && bs.level !== 'normal') add(bs.level, 'breathing', 'Breathing', bs.text, 'Breathing');
+  if (bs && bs.level !== 'normal') add(bs.level, 'breathing', 'Breathing', bs.text, 'Breathing', eventTime(b), b.id);
 
   const sk = latest(skin, 48);
   const ss = sk && skinStatus(sk.yellow, sk.signs || []);
-  if (ss && ss.level !== 'normal') add(ss.level, 'skin', 'Skin & jaundice', ss.text, 'Skin');
+  if (ss && ss.level !== 'normal') add(ss.level, 'skin', 'Skin & jaundice', ss.text, 'Skin', eventTime(sk), sk.id);
 
   // Vaccines and medicine.
   const overdue = vaccines.filter((v) => !v.completed && new Date(v.dueDate).getTime() < midnight.getTime());
   if (overdue.length) {
     add('attention', 'vaccines', `${overdue.length} vaccine${overdue.length === 1 ? '' : 's'} overdue`,
-      `${overdue[0].name}${overdue.length > 1 ? ` and ${overdue.length - 1} more` : ''}. Book with the doctor.`, 'Vaccination');
+      `${overdue[0].name}${overdue.length > 1 ? ` and ${overdue.length - 1} more` : ''}. Book with the doctor.`, 'Vaccination',
+      new Date(overdue[0].dueDate).getTime(), overdue.map((v) => v.id).join(','));
   }
   for (const d of upcomingDoses(medicines)) {
     const lateMin = (now - new Date(d.nextDoseAt).getTime()) / 60000;
     if (lateMin >= 30) {
       add('attention', `dose-${d.id}`, `${d.name} dose is late`,
-        `The next dose was due ${Math.floor(lateMin / 60) ? `${Math.floor(lateMin / 60)}h ` : ''}${Math.round(lateMin % 60)}m ago.`, 'Medicine');
+        `The next dose was due ${Math.floor(lateMin / 60) ? `${Math.floor(lateMin / 60)}h ` : ''}${Math.round(lateMin % 60)}m ago.`, 'Medicine',
+        new Date(d.nextDoseAt).getTime(), d.nextDoseAt);
     }
   }
 

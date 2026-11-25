@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBabyStore } from '../store/useBabyStore';
 import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
 import GradientView from '../components/GradientView';
-import { FONT_SIZE, FONT_WEIGHT, RADIUS, SHADOW } from '../constants/theme';
+import { FONT_SIZE, FONT_WEIGHT, RADIUS, SHADOW, TIGHT_TEXT } from '../constants/theme';
 
 import SplashScreen from '../screens/SplashScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
@@ -33,6 +33,7 @@ import BreathingScreen from '../screens/BreathingScreen';
 import SkinScreen from '../screens/SkinScreen';
 import MilestonesScreen from '../screens/MilestonesScreen';
 import HealthAlertsScreen from '../screens/HealthAlertsScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
 import { setUnauthorizedHandler } from '../lib/api';
 import { handleSessionLost } from '../lib/session';
 import { flushPending } from '../lib/storage';
@@ -107,12 +108,12 @@ function TabBar({ state, navigation }) {
             {isFocused ? (
               <GradientView colors={GRADIENTS.brand} style={styles.activePill}>
                 <Ionicons name={tab.iconActive} size={20} color={COLORS.white} />
-                <Text style={styles.activeLabel} numberOfLines={1}>{tab.label}</Text>
+                <Text style={styles.activeLabel} numberOfLines={1} adjustsFontSizeToFit {...TIGHT_TEXT}>{tab.label}</Text>
               </GradientView>
             ) : (
               <View style={styles.idleItem}>
                 <Ionicons name={tab.icon} size={20} color={C.textSecondary} />
-                <Text style={[styles.idleLabel, { color: C.textSecondary }]} numberOfLines={1}>{tab.label}</Text>
+                <Text style={[styles.idleLabel, { color: C.textSecondary }]} numberOfLines={1} adjustsFontSizeToFit {...TIGHT_TEXT}>{tab.label}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -175,6 +176,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Skin" component={SkinScreen} />
         <Stack.Screen name="Milestones" component={MilestonesScreen} />
         <Stack.Screen name="HealthAlerts" component={HealthAlertsScreen} />
+        <Stack.Screen name="Notifications" component={NotificationsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -204,8 +206,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
-    width: 64,
-    height: 52,
+    width: '100%',
+    maxWidth: 72,
+    minHeight: 52,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
     borderRadius: 26,
   },
   activeLabel: {
@@ -217,7 +222,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
-    height: 52,
+    minHeight: 52,
+    paddingHorizontal: 2,
   },
   idleLabel: {
     fontSize: FONT_SIZE.xs,

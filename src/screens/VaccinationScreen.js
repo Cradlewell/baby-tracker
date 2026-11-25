@@ -11,7 +11,7 @@ import { format, differenceInCalendarDays } from 'date-fns';
 import { useBabyStore } from '../store/useBabyStore';
 import { useVaccinationStore, SCHEDULE_SOURCE } from '../store/useVaccinationStore';
 import { COLORS } from '../constants/colors';
-import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING } from '../constants/theme';
+import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, fs } from '../constants/theme';
 import { parseDob, formatDobInput } from '../utils/formatters';
 import { setReminders, cancelReminder, vaccineReminderKey } from '../lib/reminders';
 
@@ -98,7 +98,7 @@ export default function VaccinationScreen({ navigation }) {
   const errorTint = darkMode ? COLORS.error + '22' : COLORS.errorLight;
 
   const records = useVaccinationStore((s) => s.records[babyId]) || [];
-  const { load, markCompleted, markNotCompleted } = useVaccinationStore.getState();
+  const { load, markCompleted, markNotCompleted, addCustom, removeCustom } = useVaccinationStore.getState();
   const birth = parseDob(baby?.dob);
 
   const { overdue, upcoming, completed } = useMemo(() => {
@@ -186,6 +186,38 @@ export default function VaccinationScreen({ navigation }) {
     setMarkNotes('');
   };
 
+  // ---- Add a vaccine that is not in the standard schedule ----
+  const [addOpen, setAddOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newDue, setNewDue] = useState('');
+  const [newNotes, setNewNotes] = useState('');
+  const openAdd = () => { setNewName(''); setNewDue(''); setNewNotes(''); setAddOpen(true); };
+  const addError = (() => {
+    if (!newName.trim()) return 'Enter the vaccine name';
+    const d = parseDob(newDue);
+    if (newDue.length !== 10 || !d) return 'Enter the due date as DD/MM/YYYY';
+    if (birth && d < birth) return 'Due date cannot be before date of birth';
+    return null;
+  })();
+  const handleAdd = async () => {
+    if (addError) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    await addCustom(babyId, { name: newName, dueDate: parseDob(newDue), notes: newNotes });
+    setAddOpen(false);
+    setTab('upcoming');
+  };
+  const handleDelete = () => {
+    const v = markTarget;
+    Alert.alert(`Delete ${v.name}?`, 'This removes the vaccine you added from the list.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => { await removeCustom(babyId, v.id); setMarkTarget(null); },
+      },
+    ]);
+  };
+
   const displayList = tab === 'upcoming' ? [...overdue, ...upcoming] : completed;
 
   return (
@@ -208,7 +240,7 @@ export default function VaccinationScreen({ navigation }) {
             <Ionicons name="arrow-back" size={22} color={S.blue} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: S.text }]}>Vaccinations</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.title, { color: S.text }]}>Vaccinations</Text>
             <Text style={[styles.subtitle, { color: S.textSecondary }]}>Schedule & completed</Text>
           </View>
           <TouchableOpacity
@@ -312,6 +344,17 @@ export default function VaccinationScreen({ navigation }) {
               </View>
             )}
 
+            <TouchableOpacity
+              onPress={openAdd}
+              style={[styles.addBtn, { borderColor: S.blue, backgroundColor: S.surface }]}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Add a new vaccine with a due date"
+            >
+              <Ionicons name="add-circle-outline" size={24} color={S.blue} />
+              <Text style={[styles.addBtnText, { color: S.blueText }]}>Add vaccine</Text>
+            </TouchableOpacity>
+
             {/* Tabs */}
             <View style={styles.tabs}>
               {[
@@ -349,7 +392,7 @@ export default function VaccinationScreen({ navigation }) {
                   />
                 </View>
                 <Text style={[styles.emptyTitle, { color: S.text }]}>
-                  {tab === 'done' ? 'No vaccines completed yet' : 'All scheduled vaccines are done!'}
+                  {tab === 'done' ? 'No vaccines completed yet' : 'All vaccines are done!'}
                 </Text>
               </View>
             )}
@@ -416,8 +459,90 @@ export default function VaccinationScreen({ navigation }) {
               <Ionicons name="shield-checkmark-outline" size={24} color={COLORS.white} />
               <Text style={styles.markBtnText}>Mark Complete</Text>
             </TouchableOpacity>
+            {markTarget?.custom ? (
+              <TouchableOpacity
+                onPress={handleDelete}
+                style={styles.deleteBtn}
+                accessibilityRole="button"
+                accessibilityLabel={`Delete ${markTarget.name}`}
+              >
+                <Ionicons name="trash-outline" size={20} color={COLORS.error} />
+                <Text style={styles.deleteText}>Delete this vaccine</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
+      </Modal>
+
+      {/* Add vaccine modal */}
+      <Modal visible={addOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setAddOpen(false)}>
+        <ScrollView
+          style={{ backgroundColor: S.background }}
+          contentContainerStyle={[styles.modal, { paddingBottom: insets.bottom + 32 }]}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={[styles.modalHandle, { backgroundColor: S.border }]} />
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: S.text }]}>Add Vaccine</Text>
+            <TouchableOpacity
+              onPress={() => setAddOpen(false)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={[styles.headerBtn, { backgroundColor: S.tile }]}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
+              <Ionicons name="close" size={24} color={S.text} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.modalContent}>
+            <Text style={[styles.modalLabel, { color: S.textSecondary }]}>VACCINE NAME</Text>
+            <TextInput
+              style={[styles.modalInput, styles.dateInput, { color: S.text, backgroundColor: S.surface, borderColor: S.border }]}
+              value={newName}
+              onChangeText={setNewName}
+              placeholder="e.g. Influenza (1st), Typhoid, Hepatitis A"
+              placeholderTextColor={S.textSecondary}
+              autoCapitalize="words"
+              maxLength={60}
+              accessibilityLabel="Vaccine name"
+            />
+
+            <Text style={[styles.modalLabel, { color: S.textSecondary }]}>DUE DATE</Text>
+            <TextInput
+              style={[styles.modalInput, styles.dateInput, { color: S.text, backgroundColor: S.surface, borderColor: S.border }]}
+              value={newDue}
+              onChangeText={(t) => setNewDue(formatDobInput(t))}
+              placeholder="DD/MM/YYYY"
+              placeholderTextColor={S.textSecondary}
+              keyboardType="number-pad"
+              maxLength={10}
+              accessibilityLabel="Due date"
+            />
+
+            <Text style={[styles.modalLabel, { color: S.textSecondary }]}>NOTES (optional)</Text>
+            <TextInput
+              style={[styles.modalInput, { color: S.text, backgroundColor: S.surface, borderColor: S.border }]}
+              placeholder="Doctor's advice, dose, clinic..."
+              placeholderTextColor={S.textSecondary}
+              value={newNotes}
+              onChangeText={setNewNotes}
+              multiline
+            />
+            {(newName || newDue) && addError ? <Text style={styles.dateError}>{addError}</Text> : null}
+
+            <TouchableOpacity
+              onPress={handleAdd}
+              disabled={!!addError}
+              style={[styles.markBtn, { backgroundColor: S.blue, opacity: addError ? 0.45 : 1 }]}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Save vaccine"
+            >
+              <Ionicons name="add-circle-outline" size={24} color={COLORS.white} />
+              <Text style={styles.markBtnText}>Add Vaccine</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </Modal>
     </View>
   );
@@ -428,8 +553,8 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: SPACING.lg },
   header: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: SPACING.lg },
   headerBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 28, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
-  subtitle: { fontSize: 15, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
+  title: { fontSize: fs(28), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  subtitle: { fontSize: fs(15), fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
   progressCard: { padding: 20, borderRadius: 28, marginBottom: SPACING.md, gap: SPACING.md },
   progressTop: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
   progressIcon: {
@@ -437,30 +562,30 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   progressNum: { fontSize: FONT_SIZE.hero, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -1 },
-  progressLabel: { fontSize: 15, fontWeight: FONT_WEIGHT.semibold },
+  progressLabel: { fontSize: fs(15), fontWeight: FONT_WEIGHT.semibold },
   progressBar: { width: '100%', height: 10, borderRadius: 5, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 5 },
   heroChip: {
     flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'stretch',
     paddingHorizontal: 14, minHeight: 48, borderRadius: 20, borderWidth: 1,
   },
-  heroChipText: { flexShrink: 1, fontSize: 15, fontWeight: FONT_WEIGHT.bold },
-  sourceNote: { fontSize: 13, lineHeight: 18, marginBottom: SPACING.md, marginHorizontal: 4 },
+  heroChipText: { flexShrink: 1, fontSize: fs(15), fontWeight: FONT_WEIGHT.bold },
+  sourceNote: { fontSize: fs(13), lineHeight: 18, marginBottom: SPACING.md, marginHorizontal: 4 },
   overdueAlert: {
     flexDirection: 'row', alignItems: 'center', gap: 10, padding: SPACING.md,
     borderRadius: 20, borderWidth: 1, marginBottom: SPACING.md,
   },
-  overdueText: { flex: 1, fontSize: 15, fontWeight: FONT_WEIGHT.bold },
+  overdueText: { flex: 1, fontSize: fs(15), fontWeight: FONT_WEIGHT.bold },
   tabs: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md },
   tab: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     minHeight: 48, borderRadius: RADIUS.full, borderWidth: 1,
   },
-  tabText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold },
+  tabText: { fontSize: fs(15), fontWeight: FONT_WEIGHT.bold },
   emptyWrap: { alignItems: 'center', paddingVertical: SPACING.xxl, gap: SPACING.md },
   emptyIcon: { width: 72, height: 72, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  emptyTitle: { fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3, textAlign: 'center' },
-  emptyText: { textAlign: 'center', fontSize: 15, lineHeight: 21, marginBottom: SPACING.md },
+  emptyTitle: { fontSize: fs(22), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3, textAlign: 'center' },
+  emptyText: { textAlign: 'center', fontSize: fs(15), lineHeight: 21, marginBottom: SPACING.md },
   vaccItem: {
     flexDirection: 'row', alignItems: 'center', gap: 16, padding: 16,
     borderRadius: 20, borderWidth: 1, marginBottom: 10, minHeight: 72,
@@ -468,22 +593,22 @@ const styles = StyleSheet.create({
   vaccOverdue: { borderColor: COLORS.error + '40' },
   vaccDone: { opacity: 0.7 },
   vaccIcon: { width: 48, height: 48, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  vaccName: { fontSize: 17, fontWeight: FONT_WEIGHT.bold },
-  vaccDue: { fontSize: 15, marginTop: 2 },
+  vaccName: { fontSize: fs(17), fontWeight: FONT_WEIGHT.bold },
+  vaccDue: { fontSize: fs(15), marginTop: 2 },
   modal: { flex: 1, paddingHorizontal: SPACING.lg },
   modalHandle: { width: 40, height: 5, borderRadius: 3, alignSelf: 'center', marginTop: 12, marginBottom: 8 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACING.md },
-  modalTitle: { fontSize: 28, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  modalTitle: { fontSize: fs(28), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
   modalContent: { gap: SPACING.md },
   modalVaccCard: {
     flexDirection: 'row', alignItems: 'center', gap: 16, padding: 16,
     borderRadius: 24,
   },
-  modalVaccName: { flex: 1, fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
+  modalVaccName: { flex: 1, fontSize: fs(22), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
   modalLabel: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.heavy, letterSpacing: 1.2, marginLeft: 4 },
   modalInput: {
     minHeight: 80, borderRadius: 16, borderWidth: 1.5,
-    paddingHorizontal: SPACING.md, paddingVertical: 14, fontSize: 16,
+    paddingHorizontal: SPACING.md, paddingVertical: 14, fontSize: fs(16),
     fontWeight: FONT_WEIGHT.semibold, textAlignVertical: 'top',
   },
   dateInput: { minHeight: 56, textAlignVertical: 'center' },
@@ -495,7 +620,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     minHeight: 56, paddingHorizontal: SPACING.lg, borderRadius: RADIUS.full, gap: 10,
   },
-  markBtnText: { fontSize: 18, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.2 },
+  markBtnText: { fontSize: fs(18), fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.2 },
+  addBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    minHeight: 52, borderRadius: RADIUS.full, borderWidth: 1.5, borderStyle: 'dashed', marginBottom: SPACING.md,
+  },
+  addBtnText: { fontSize: fs(16), fontWeight: FONT_WEIGHT.heavy },
+  deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 48 },
+  deleteText: { color: COLORS.error, fontSize: fs(16), fontWeight: FONT_WEIGHT.bold },
   remindCard: {
     flexDirection: 'row', alignItems: 'center', gap: 16,
     padding: 16, borderRadius: 20, marginBottom: SPACING.md,

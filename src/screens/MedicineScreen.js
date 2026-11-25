@@ -10,7 +10,7 @@ import { useBabyStore } from '../store/useBabyStore';
 import { useMedicineStore, upcomingDoses } from '../store/useMedicineStore';
 import { setReminders, cancelReminder, medicineReminderKey } from '../lib/reminders';
 import { COLORS } from '../constants/colors';
-import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING } from '../constants/theme';
+import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, fs } from '../constants/theme';
 import { formatRelative, formatTime } from '../utils/formatters';
 
 // Local palette for this screen, taken from the user's approved screenshot.
@@ -145,7 +145,7 @@ export default function MedicineScreen({ navigation }) {
             <Ionicons name="arrow-back" size={22} color={S.blue} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: S.text }]}>Medicine</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.title, { color: S.text }]}>Medicine</Text>
             <Text style={[styles.subtitle, { color: S.textSecondary }]}>Doses given or skipped</Text>
           </View>
           <TouchableOpacity
@@ -166,7 +166,7 @@ export default function MedicineScreen({ navigation }) {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.heroLabel, { color: S.textSecondary }]}>Last dose</Text>
-              <Text style={[styles.heroValue, { color: S.text }]} numberOfLines={1}>
+              <Text style={[styles.heroValue, { color: S.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
                 {lastLog ? lastLog.name : 'Nothing logged yet'}
               </Text>
               {lastLog && (
@@ -426,8 +426,8 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: SPACING.lg },
   header: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: SPACING.lg },
   headerBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 28, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
-  subtitle: { fontSize: 15, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
+  title: { fontSize: fs(28), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  subtitle: { fontSize: fs(15), fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
 
   hero: { borderRadius: 28, padding: 20, marginBottom: SPACING.lg },
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
@@ -435,32 +435,32 @@ const styles = StyleSheet.create({
     width: 56, height: 56, borderRadius: 16,
     alignItems: 'center', justifyContent: 'center',
   },
-  heroLabel: { fontSize: 13, fontWeight: FONT_WEIGHT.bold, letterSpacing: 0.2 },
+  heroLabel: { fontSize: fs(13), fontWeight: FONT_WEIGHT.bold, letterSpacing: 0.2 },
   heroValue: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.4, marginTop: 1 },
-  heroSub: { fontSize: 15, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
+  heroSub: { fontSize: fs(15), fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
   heroChips: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
   heroChip: {
     flex: 1, alignItems: 'center', paddingVertical: 12, gap: 2,
     borderRadius: 20, borderWidth: 1,
   },
   heroChipValue: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.heavy },
-  heroChipLabel: { fontSize: 13, fontWeight: FONT_WEIGHT.semibold },
+  heroChipLabel: { fontSize: fs(13), fontWeight: FONT_WEIGHT.semibold },
 
   toast: {
     flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, minHeight: 48,
     padding: 14, borderRadius: RADIUS.full, marginBottom: SPACING.md,
   },
-  toastText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold },
+  toastText: { fontSize: fs(15), fontWeight: FONT_WEIGHT.bold },
 
   formCard: { borderRadius: 28, padding: 20, gap: SPACING.md, marginBottom: SPACING.md },
   formHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: SPACING.xs },
-  formTitle: { fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
+  formTitle: { fontSize: fs(22), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
   tile: { width: 48, height: 48, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   field: { gap: 8 },
   fieldLabel: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.heavy, letterSpacing: 1.2 },
   input: {
     minHeight: 56, borderRadius: 16, borderWidth: 1.5,
-    paddingHorizontal: SPACING.md, fontSize: 16,
+    paddingHorizontal: SPACING.md, fontSize: fs(16),
   },
   notesInput: { height: 84, textAlignVertical: 'top', paddingTop: 14 },
   doseRow: { flexDirection: 'row', gap: SPACING.sm },
@@ -469,31 +469,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, minWidth: 48, height: 56, borderRadius: 16, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
-  unitText: { fontSize: 15, fontWeight: FONT_WEIGHT.medium },
+  unitText: { fontSize: fs(15), fontWeight: FONT_WEIGHT.medium },
   unitTextActive: { fontWeight: FONT_WEIGHT.heavy },
   statusRow: { flexDirection: 'row', gap: SPACING.sm },
   statusBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, minHeight: 56, borderRadius: 20, borderWidth: 1,
   },
-  statusText: { fontSize: 16, fontWeight: FONT_WEIGHT.bold },
+  statusText: { fontSize: fs(16), fontWeight: FONT_WEIGHT.bold },
   saveWrap: { marginTop: SPACING.sm },
   saveBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     minHeight: 56, paddingHorizontal: SPACING.lg, borderRadius: RADIUS.full, gap: 10,
   },
-  saveBtnText: { fontSize: 18, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.2 },
+  saveBtnText: { fontSize: fs(18), fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.2 },
   sectionTitle: {
-    fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3,
+    fontSize: fs(22), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3,
     marginTop: SPACING.lg, marginBottom: 12,
   },
   logItem: {
     flexDirection: 'row', alignItems: 'center', gap: 16,
     padding: 16, borderRadius: 20, marginBottom: 10,
   },
-  logTitle: { fontSize: 17, fontWeight: FONT_WEIGHT.bold },
-  logSub: { fontSize: 15, marginTop: 2 },
-  logTime: { fontSize: 14, fontWeight: FONT_WEIGHT.medium, alignSelf: 'flex-start', marginTop: 2 },
+  logTitle: { fontSize: fs(17), fontWeight: FONT_WEIGHT.bold },
+  logSub: { fontSize: fs(15), marginTop: 2 },
+  logTime: { fontSize: fs(14), fontWeight: FONT_WEIGHT.medium, alignSelf: 'flex-start', marginTop: 2 },
 
   dosesCard: { borderRadius: 24, padding: 20, marginBottom: SPACING.md },
   doseItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12 },
@@ -501,14 +501,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.full,
   },
-  countText: { fontSize: 13, fontWeight: FONT_WEIGHT.heavy },
+  countText: { fontSize: fs(13), fontWeight: FONT_WEIGHT.heavy },
   giveBtn: { minHeight: 48, justifyContent: 'center', paddingHorizontal: 14, borderRadius: RADIUS.full },
-  giveText: { color: COLORS.white, fontSize: 14, fontWeight: FONT_WEIGHT.heavy },
+  giveText: { color: COLORS.white, fontSize: fs(14), fontWeight: FONT_WEIGHT.heavy },
   stopBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   intervalRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   intervalBtn: {
     minWidth: 56, height: 48, paddingHorizontal: 12, borderRadius: RADIUS.full, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
-  intervalHint: { fontSize: 15, fontWeight: FONT_WEIGHT.semibold },
+  intervalHint: { fontSize: fs(15), fontWeight: FONT_WEIGHT.semibold },
 });

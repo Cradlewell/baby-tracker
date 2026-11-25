@@ -15,12 +15,13 @@ import { useGrowthStore } from '../store/useGrowthStore';
 import { useVaccinationStore } from '../store/useVaccinationStore';
 import { differenceInCalendarDays } from 'date-fns';
 import { COLORS, DARK_COLORS, GRADIENTS, QUICK_LOG_GRADIENTS } from '../constants/colors';
-import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
+import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW, fs } from '../constants/theme';
 import GradientView from '../components/GradientView';
 import { useAuthStore } from '../store/useAuthStore';
 import { openSwitchClient } from '../lib/switchClientFlow';
 import { useHealthCheck } from '../lib/useHealthCheck';
 import { AlertCard } from './HealthAlertsScreen';
+import { useNotifications } from '../lib/notifications';
 import { recentActivity } from '../lib/recentActivity';
 import {
   useTemperatureStore, useBreathingStore, useSkinStore, useMilestoneStore,
@@ -171,6 +172,7 @@ export default function HomeScreen({ navigation }) {
 
   const insets = useSafeAreaInsets();
   const health = useHealthCheck();
+  const notes = useNotifications();
 
   if (!baby) return null;
 
@@ -224,13 +226,22 @@ export default function HomeScreen({ navigation }) {
             </Text>
           </View>
           <TouchableOpacity
-            onPress={() => navigation.navigate('HealthAlerts')}
+            onPress={() => navigation.navigate('Notifications')}
             style={[styles.iconBtn, { backgroundColor: C.card }, SHADOW.sm]}
             accessibilityRole="button"
-            accessibilityLabel={health.alerts.length ? `Health alerts, ${health.alerts.length} new` : 'Health alerts'}
+            accessibilityLabel={notes.unreadCount ? `Notifications, ${notes.unreadCount} unread` : 'Notifications'}
           >
             <Ionicons name="notifications-outline" size={24} color={C.primary} />
-            {health.alerts.length ? <View style={[styles.bellDot, { borderColor: C.card }]} /> : null}
+            {notes.unreadCount ? (
+              <View
+                style={[
+                  styles.bellBadge,
+                  { borderColor: C.card, backgroundColor: notes.urgentUnread ? COLORS.error : C.primary },
+                ]}
+              >
+                <Text style={styles.bellBadgeText} maxFontSizeMultiplier={1.2}>{notes.unreadCount > 9 ? '9+' : notes.unreadCount}</Text>
+              </View>
+            ) : null}
           </TouchableOpacity>
         </View>
 
@@ -486,7 +497,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.lg, gap: 12 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   brandLogo: { width: 40, height: 40 },
-  wordmark: { fontSize: 26, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  wordmark: { fontSize: fs(26), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
   wordmarkLight: { fontWeight: FONT_WEIGHT.light },
   iconBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   clientChip: {
@@ -509,11 +520,11 @@ const styles = StyleSheet.create({
     width: 60, height: 60, borderRadius: 30, backgroundColor: COLORS.white,
     alignItems: 'center', justifyContent: 'center',
   },
-  heroAvatarText: { color: COLORS.primary, fontSize: 26, fontWeight: FONT_WEIGHT.heavy },
-  heroName: { color: COLORS.white, fontSize: 26, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  heroAvatarText: { color: COLORS.primary, fontSize: fs(26), fontWeight: FONT_WEIGHT.heavy },
+  heroName: { color: COLORS.white, fontSize: fs(26), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
   heroAgeRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
   // 19px bold counts as large text, so white passes 3:1 on the lighter end of the gradient.
-  heroAge: { color: COLORS.white, fontSize: 19, fontWeight: FONT_WEIGHT.bold },
+  heroAge: { color: COLORS.white, fontSize: fs(19), fontWeight: FONT_WEIGHT.bold },
   livePill: {
     flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start',
     marginTop: SPACING.md, paddingHorizontal: 12, paddingVertical: 6,
@@ -561,10 +572,11 @@ const styles = StyleSheet.create({
   statTitle: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.heavy },
   statFoot: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, marginTop: 4, flex: 1 },
   statSub: { flex: 1, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium, lineHeight: 18 },
-  bellDot: {
-    position: 'absolute', top: 10, right: 11, width: 11, height: 11, borderRadius: 6,
-    backgroundColor: COLORS.primary, borderWidth: 2,
+  bellBadge: {
+    position: 'absolute', top: 4, right: 4, minWidth: 20, height: 20, borderRadius: 10,
+    paddingHorizontal: 4, borderWidth: 2, alignItems: 'center', justifyContent: 'center',
   },
+  bellBadgeText: { color: COLORS.white, fontSize: fs(11), fontWeight: FONT_WEIGHT.heavy },
   viewAll: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 44 },
   viewAllText: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
   noAlerts: {

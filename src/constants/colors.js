@@ -128,6 +128,21 @@ export const GRADIENTS = {
   night: [NAVY, '#11131C'],
 };
 
+// Chart series, from the brand palette only: purple, blue, a light blue tint and navy.
+// Paired series (left/right breast, sleep/awake) use a dark and a light colour so they stay
+// apart even in black-and-white print.
+export const CHART_COLORS = {
+  left: BRAND_PURPLE,
+  right: '#A8B8FF',
+  bottle: BRAND_BLUE,
+  sleep: BRAND_PURPLE,
+  awake: '#A8B8FF',
+  wet: BRAND_BLUE,
+  stool: NAVY,
+  stoolDark: '#C9CCE0', // stool on a dark card
+  both: BRAND_PURPLE,
+};
+
 // Kept unchanged on purpose: the Home "Quick log" tiles stay exactly as they were
 // (user instruction). Used only by that section.
 export const QUICK_LOG_GRADIENTS = {

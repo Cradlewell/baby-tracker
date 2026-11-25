@@ -10,9 +10,10 @@ import { useGrowthStore } from '../store/useGrowthStore';
 import { validateDob, formatDobInput, parseDob, parsePositiveNumber } from '../utils/formatters';
 import { COLORS, GRADIENTS } from '../constants/colors';
 import GradientView from '../components/GradientView';
-import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
+import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW, MAX_CONTENT_WIDTH } from '../constants/theme';
 
-const { width: W } = Dimensions.get('window');
+// The app sits in a centred column on wide screens, so size from that column's width.
+const W = Math.min(Dimensions.get('window').width, MAX_CONTENT_WIDTH);
 
 const STEPS = ['name', 'dob', 'gender', 'weight', 'feeding'];
 const STEP_LABELS = ["Baby's name", 'Date of birth', 'Gender', 'Birth weight', 'Feeding type'];

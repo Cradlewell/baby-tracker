@@ -10,7 +10,7 @@ import * as Haptics from 'expo-haptics';
 import { useBabyStore } from '../store/useBabyStore';
 import { useGrowthStore } from '../store/useGrowthStore';
 import { COLORS } from '../constants/colors';
-import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING } from '../constants/theme';
+import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, fs } from '../constants/theme';
 import { formatDateFull, formatRelative, parsePositiveNumber } from '../utils/formatters';
 
 // Local palette for this screen, taken from the user's approved screenshot.
@@ -218,7 +218,7 @@ export default function GrowthScreen({ navigation }) {
             </TouchableOpacity>
           ) : null}
           <View style={{ flex: 1 }}>
-            <Text style={[styles.screenTitle, { color: S.text }]}>Growth</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.screenTitle, { color: S.text }]}>Growth</Text>
             <Text style={[styles.screenSub, { color: S.textSecondary }]}>
               {logs.length} measurement{logs.length !== 1 ? 's' : ''}
             </Text>
@@ -243,7 +243,7 @@ export default function GrowthScreen({ navigation }) {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.heroLabel, { color: S.textSecondary }]}>Current Weight</Text>
-                  <Text style={[styles.heroValue, { color: S.text }]}>
+                  <Text style={[styles.heroValue, { color: S.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
                     {parseFloat(latestWeight.weight).toFixed(2)} {latestWeight.unit || 'kg'}
                   </Text>
                 </View>
@@ -361,10 +361,10 @@ const styles = StyleSheet.create({
   screenHeader: { marginBottom: SPACING.lg },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   headerBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  screenTitle: { fontSize: 28, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
-  screenSub: { fontSize: 15, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
+  screenTitle: { fontSize: fs(28), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  screenSub: { fontSize: fs(15), fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
   sectionTitle: {
-    fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3,
+    fontSize: fs(22), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3,
     marginTop: SPACING.lg, marginBottom: 12,
   },
 
@@ -375,34 +375,34 @@ const styles = StyleSheet.create({
     width: 56, height: 56, borderRadius: 16,
     alignItems: 'center', justifyContent: 'center',
   },
-  heroLabel: { fontSize: 15, fontWeight: FONT_WEIGHT.semibold },
-  heroValue: { fontSize: 28, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  heroLabel: { fontSize: fs(15), fontWeight: FONT_WEIGHT.semibold },
+  heroValue: { fontSize: fs(28), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
   gainBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1,
     paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.full,
   },
-  gainText: { fontSize: 14, fontWeight: FONT_WEIGHT.heavy },
+  gainText: { fontSize: fs(14), fontWeight: FONT_WEIGHT.heavy },
   heroChips: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
   heroChip: {
     flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingVertical: 12, paddingHorizontal: 12,
     borderRadius: 20, borderWidth: 1,
   },
-  heroChipValue: { fontSize: 17, fontWeight: FONT_WEIGHT.heavy },
-  heroChipLabel: { fontSize: 13, fontWeight: FONT_WEIGHT.semibold, marginTop: 1 },
+  heroChipValue: { fontSize: fs(17), fontWeight: FONT_WEIGHT.heavy },
+  heroChipLabel: { fontSize: fs(13), fontWeight: FONT_WEIGHT.semibold, marginTop: 1 },
   gainNote: {
-    fontSize: 15, fontWeight: FONT_WEIGHT.medium,
+    fontSize: fs(15), fontWeight: FONT_WEIGHT.medium,
     textAlign: 'center', marginTop: SPACING.md,
   },
 
   // Chart
   chartCard: { borderRadius: 24, padding: 20, marginBottom: SPACING.md },
   chartHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: SPACING.md },
-  chartTitle: { fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
+  chartTitle: { fontSize: fs(22), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
   chartWrap: { width: '100%', minHeight: 76 },
   chartBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 60 },
   chartBar: { flex: 1, borderRadius: 6 },
-  chartRange: { fontSize: 13, marginTop: 6 },
+  chartRange: { fontSize: fs(13), marginTop: 6 },
 
   tile: { width: 48, height: 48, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
 
@@ -411,14 +411,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     minHeight: 56, paddingHorizontal: SPACING.lg, borderRadius: RADIUS.full, gap: 10,
   },
-  addBtnText: { fontSize: 18, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.2 },
+  addBtnText: { fontSize: fs(18), fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.2 },
 
   logItem: {
     flexDirection: 'row', alignItems: 'center', gap: 16,
     padding: 16, borderRadius: 20, marginBottom: 10,
   },
-  logTitle: { fontSize: 17, fontWeight: FONT_WEIGHT.bold },
-  logSub: { fontSize: 15, marginTop: 2 },
+  logTitle: { fontSize: fs(17), fontWeight: FONT_WEIGHT.bold },
+  logSub: { fontSize: fs(15), marginTop: 2 },
 
   emptyWrap: {
     alignItems: 'center', paddingVertical: SPACING.xl, paddingHorizontal: SPACING.lg,
@@ -428,17 +428,17 @@ const styles = StyleSheet.create({
     width: 72, height: 72, borderRadius: 24, marginBottom: SPACING.sm,
     alignItems: 'center', justifyContent: 'center',
   },
-  emptyTitle: { fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
-  emptySub: { fontSize: 15, textAlign: 'center' },
+  emptyTitle: { fontSize: fs(22), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3 },
+  emptySub: { fontSize: fs(15), textAlign: 'center' },
 
   // Modal
   modal: { flex: 1, paddingHorizontal: SPACING.lg },
   modalHandle: { width: 40, height: 5, borderRadius: 3, alignSelf: 'center', marginTop: 12, marginBottom: 8 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: SPACING.md },
-  modalTitle: { fontSize: 28, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  modalTitle: { fontSize: fs(28), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
   modalContent: { paddingBottom: 40, gap: SPACING.md },
   fieldWrap: { gap: 8 },
-  fieldLabel: { fontSize: 15, fontWeight: FONT_WEIGHT.bold, letterSpacing: 0.2 },
+  fieldLabel: { fontSize: fs(15), fontWeight: FONT_WEIGHT.bold, letterSpacing: 0.2 },
   fieldRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   fieldInput: {
     flex: 1, minHeight: 56, borderRadius: 16, borderWidth: 1.5,
@@ -448,14 +448,14 @@ const styles = StyleSheet.create({
     width: 56, height: 56, borderRadius: 16,
     alignItems: 'center', justifyContent: 'center',
   },
-  fieldSuffix: { fontSize: 15, fontWeight: FONT_WEIGHT.heavy },
+  fieldSuffix: { fontSize: fs(15), fontWeight: FONT_WEIGHT.heavy },
   unitRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   unitToggle: { flexDirection: 'row', gap: SPACING.sm },
   unitBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 20, minHeight: 48, borderRadius: RADIUS.full, borderWidth: 1,
   },
-  unitText: { fontSize: 16, fontWeight: FONT_WEIGHT.medium },
+  unitText: { fontSize: fs(16), fontWeight: FONT_WEIGHT.medium },
   unitTextActive: { fontWeight: FONT_WEIGHT.heavy },
   errorText: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, marginBottom: 8 },
   saveWrap: { marginTop: SPACING.md },
@@ -463,5 +463,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     minHeight: 56, paddingHorizontal: SPACING.lg, borderRadius: RADIUS.full, gap: 10,
   },
-  saveBtnText: { fontSize: 18, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.2 },
+  saveBtnText: { fontSize: fs(18), fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.2 },
 });

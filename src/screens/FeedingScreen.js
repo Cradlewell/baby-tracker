@@ -10,7 +10,7 @@ import * as Haptics from 'expo-haptics';
 import { useBabyStore } from '../store/useBabyStore';
 import { useFeedingStore, sideSecs } from '../store/useFeedingStore';
 import { COLORS } from '../constants/colors';
-import { FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
+import { FONT_WEIGHT, RADIUS, SPACING, SHADOW, fs } from '../constants/theme';
 import {
   formatDurationMins, formatDuration, formatRelative, parsePositiveNumber, startOfToday,
 } from '../utils/formatters';
@@ -162,7 +162,7 @@ function BreastfeedTimer({ S, onEnd }) {
   return (
     <HeroCard S={S}>
       <HeroPill S={S} icon="time-outline">{paused ? 'Paused' : 'Total'}</HeroPill>
-      <Text style={[styles.heroTime, { color: S.text }]}>{formatDurationMins(leftSecs + rightSecs)}</Text>
+      <Text style={[styles.heroTime, { color: S.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{formatDurationMins(leftSecs + rightSecs)}</Text>
 
       <View style={styles.sidesRow}>
         {renderSide('left', leftSecs)}
@@ -331,7 +331,7 @@ function BottleTimingView({ S, session }) {
 
       <View style={styles.heroCenter}>
         <Text style={[styles.heroCaption, { color: S.textSecondary }]}>TIME ELAPSED</Text>
-        <Text style={[styles.heroTime, { color: S.text }]}>
+        <Text style={[styles.heroTime, { color: S.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
           {formatDurationMins(elapsed)}
         </Text>
         {session.paused && (
@@ -597,7 +597,7 @@ export default function FeedingScreen({ navigation }) {
             <Ionicons name="nutrition-outline" size={30} color={S.blue} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.screenTitle, { color: S.text }]}>Feeding</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.screenTitle, { color: S.text }]}>Feeding</Text>
             <Text style={[styles.screenSub, { color: S.textSecondary }]}>
               {logs.length > 0 ? `${todayCount} feed${todayCount === 1 ? '' : 's'} today` : 'Start first feed'}
             </Text>
@@ -753,18 +753,18 @@ const styles = StyleSheet.create({
   // Header
   screenHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: SPACING.lg },
   headerIcon: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  screenTitle: { fontSize: 28, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
-  screenSub: { fontSize: 15, fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
+  screenTitle: { fontSize: fs(28), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
+  screenSub: { fontSize: fs(15), fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
   headerBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
 
   successToast: {
     flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, minHeight: 48,
     borderRadius: RADIUS.full, borderWidth: 1, marginBottom: SPACING.md,
   },
-  successText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold },
+  successText: { fontSize: fs(15), fontWeight: FONT_WEIGHT.bold },
 
-  sectionTitle: { fontSize: 22, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3, marginBottom: 12 },
-  cardTitle: { fontSize: 18, fontWeight: FONT_WEIGHT.heavy },
+  sectionTitle: { fontSize: fs(22), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.3, marginBottom: 12 },
+  cardTitle: { fontSize: fs(18), fontWeight: FONT_WEIGHT.heavy },
 
   // Main light-blue card (every state)
   hero: { borderRadius: 28, padding: 20, gap: SPACING.md },
@@ -772,10 +772,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start',
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS.full, maxWidth: '100%',
   },
-  heroPillText: { fontSize: 15, fontWeight: FONT_WEIGHT.bold, flexShrink: 1 },
-  heroTime: { fontSize: 64, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -2, fontVariant: ['tabular-nums'] },
+  heroPillText: { fontSize: fs(15), fontWeight: FONT_WEIGHT.bold, flexShrink: 1 },
+  heroTime: { fontSize: fs(64), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -2, fontVariant: ['tabular-nums'] },
   heroCenter: { alignItems: 'center', paddingVertical: SPACING.sm },
-  heroCaption: { fontSize: 13, fontWeight: FONT_WEIGHT.bold, letterSpacing: 1 },
+  heroCaption: { fontSize: fs(13), fontWeight: FONT_WEIGHT.bold, letterSpacing: 1 },
 
   // Start screen
   typeGrid: { flexDirection: 'row', gap: 12 },
@@ -784,32 +784,32 @@ const styles = StyleSheet.create({
     borderRadius: 24, borderWidth: 1, gap: 4, minHeight: 130,
   },
   typeIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  typeLabel: { fontSize: 17, fontWeight: FONT_WEIGHT.heavy },
-  typeSub: { fontSize: 13, fontWeight: FONT_WEIGHT.medium },
+  typeLabel: { fontSize: fs(17), fontWeight: FONT_WEIGHT.heavy },
+  typeSub: { fontSize: fs(13), fontWeight: FONT_WEIGHT.medium },
 
   // Buttons
   primaryBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     minHeight: 56, paddingHorizontal: SPACING.lg, borderRadius: RADIUS.full, gap: 10,
   },
-  primaryBtnText: { fontSize: 18, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.2 },
+  primaryBtnText: { fontSize: fs(18), fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.2 },
   controlRow: { flexDirection: 'row', gap: 12 },
   controlPrimary: { flex: 2, paddingHorizontal: 12 },
   secondaryBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, minHeight: 56, borderRadius: RADIUS.full, borderWidth: 1.5,
   },
-  secondaryBtnText: { fontSize: 18, fontWeight: FONT_WEIGHT.heavy },
+  secondaryBtnText: { fontSize: fs(18), fontWeight: FONT_WEIGHT.heavy },
   cancelBtn: {
     alignItems: 'center', justifyContent: 'center', minHeight: 52,
     borderRadius: RADIUS.full, borderWidth: 1, marginTop: SPACING.md,
   },
-  cancelText: { fontSize: 17, fontWeight: FONT_WEIGHT.bold },
+  cancelText: { fontSize: fs(17), fontWeight: FONT_WEIGHT.bold },
 
   // Heading row at the top of form cards
   infoBadge: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   infoBadgeIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  infoBadgeText: { flex: 1, fontSize: 17, fontWeight: FONT_WEIGHT.bold },
+  infoBadgeText: { flex: 1, fontSize: fs(17), fontWeight: FONT_WEIGHT.bold },
 
   // Breast sides
   sidesRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -817,11 +817,11 @@ const styles = StyleSheet.create({
     flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.md, gap: 6, minHeight: 150,
     borderRadius: 24, borderWidth: 1,
   },
-  sideLabel: { fontSize: 15, fontWeight: FONT_WEIGHT.medium, letterSpacing: 0.5 },
-  sideTime: { fontSize: 32, fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
+  sideLabel: { fontSize: fs(15), fontWeight: FONT_WEIGHT.medium, letterSpacing: 0.5 },
+  sideTime: { fontSize: fs(32), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
   activeDot: { position: 'absolute', top: 14, right: 14, width: 10, height: 10, borderRadius: 5 },
   switchBtn: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
-  switchHint: { textAlign: 'center', fontSize: 13, fontWeight: FONT_WEIGHT.medium },
+  switchHint: { textAlign: 'center', fontSize: fs(13), fontWeight: FONT_WEIGHT.medium },
 
 
   // Side picker
@@ -830,35 +830,35 @@ const styles = StyleSheet.create({
     borderRadius: 24, borderWidth: 1,
   },
   pickIcon: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  pickLabel: { fontSize: 17, fontWeight: FONT_WEIGHT.heavy, letterSpacing: 1 },
-  sidePickerHint: { fontSize: 13, textAlign: 'center', fontWeight: FONT_WEIGHT.medium },
+  pickLabel: { fontSize: fs(17), fontWeight: FONT_WEIGHT.heavy, letterSpacing: 1 },
+  sidePickerHint: { fontSize: fs(13), textAlign: 'center', fontWeight: FONT_WEIGHT.medium },
 
   // Bottle forms
-  formSection: { fontSize: 13, fontWeight: FONT_WEIGHT.bold, letterSpacing: 1 },
+  formSection: { fontSize: fs(13), fontWeight: FONT_WEIGHT.bold, letterSpacing: 1 },
   pillRow3: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   typePill: {
     minHeight: 48, justifyContent: 'center', paddingHorizontal: 18, borderRadius: RADIUS.full, borderWidth: 1,
   },
-  typePillText: { fontSize: 15, fontWeight: FONT_WEIGHT.semibold },
+  typePillText: { fontSize: fs(15), fontWeight: FONT_WEIGHT.semibold },
   typePillTextActive: { fontWeight: FONT_WEIGHT.heavy },
   qtyCard: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
     padding: 10, borderRadius: 24, borderWidth: 1,
   },
   qtyBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  qtyInput: { flex: 1, height: 52, fontSize: 26, fontWeight: FONT_WEIGHT.heavy },
+  qtyInput: { flex: 1, height: 52, fontSize: fs(26), fontWeight: FONT_WEIGHT.heavy },
   unitToggle: { flexDirection: 'row', borderRadius: RADIUS.full, overflow: 'hidden', borderWidth: 1, padding: 3 },
   unitBtn: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 12, borderRadius: RADIUS.full },
-  unitText: { fontSize: 15, fontWeight: FONT_WEIGHT.semibold },
+  unitText: { fontSize: fs(15), fontWeight: FONT_WEIGHT.semibold },
   unitTextActive: { color: COLORS.white, fontWeight: FONT_WEIGHT.heavy },
-  unitLabel: { fontSize: 15, fontWeight: FONT_WEIGHT.bold, paddingHorizontal: 8 },
+  unitLabel: { fontSize: fs(15), fontWeight: FONT_WEIGHT.bold, paddingHorizontal: 8 },
 
   prepSummary: { borderRadius: 24, borderWidth: 1, paddingHorizontal: SPACING.md },
   prepSummaryRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12,
   },
-  prepSummaryLabel: { fontSize: 15, fontWeight: FONT_WEIGHT.medium },
-  prepSummaryVal: { fontSize: 17, fontWeight: FONT_WEIGHT.heavy },
+  prepSummaryLabel: { fontSize: fs(15), fontWeight: FONT_WEIGHT.medium },
+  prepSummaryVal: { fontSize: fs(17), fontWeight: FONT_WEIGHT.heavy },
 
   // Timer running for another baby
   otherBaby: {
@@ -866,11 +866,11 @@ const styles = StyleSheet.create({
     padding: 14, borderRadius: 24, marginBottom: SPACING.md,
   },
   otherBabyIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  otherBabyText: { flex: 1, fontSize: 15, fontWeight: FONT_WEIGHT.semibold },
+  otherBabyText: { flex: 1, fontSize: fs(15), fontWeight: FONT_WEIGHT.semibold },
   otherBabyBtn: {
     minHeight: 48, justifyContent: 'center', paddingHorizontal: 20, borderRadius: RADIUS.full,
   },
-  otherBabyBtnText: { color: COLORS.white, fontWeight: FONT_WEIGHT.heavy, fontSize: 15 },
+  otherBabyBtnText: { color: COLORS.white, fontWeight: FONT_WEIGHT.heavy, fontSize: fs(15) },
 
   // Log items
   logItem: {
@@ -880,7 +880,7 @@ const styles = StyleSheet.create({
   logIcon: {
     width: 48, height: 48, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center',
   },
-  logTitle: { fontSize: 17, fontWeight: FONT_WEIGHT.bold },
-  logSub: { fontSize: 15, marginTop: 2 },
-  logTime: { fontSize: 14, fontWeight: FONT_WEIGHT.medium, alignSelf: 'flex-start', marginTop: 2 },
+  logTitle: { fontSize: fs(17), fontWeight: FONT_WEIGHT.bold },
+  logSub: { fontSize: fs(15), marginTop: 2 },
+  logTime: { fontSize: fs(14), fontWeight: FONT_WEIGHT.medium, alignSelf: 'flex-start', marginTop: 2 },
 });
