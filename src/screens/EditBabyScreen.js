@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView,
 } from 'react-native';
@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
 import { useBabyStore } from '../store/useBabyStore';
+import { refreshVaccineReminders } from '../lib/vaccineReminders';
 import { useVaccinationStore } from '../store/useVaccinationStore';
 import { validateDob, formatDobInput } from '../utils/formatters';
 import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
@@ -21,6 +22,7 @@ export default function EditBabyScreen({ navigation, route }) {
   const C = darkMode ? DARK_COLORS : COLORS;
   const insets = useSafeAreaInsets();
 
+  const savingRef = useRef(false);
   const [name, setName] = useState(baby?.name || '');
   const [dob, setDob] = useState(baby?.dob || '');
   const [gender, setGender] = useState(baby?.gender || 'girl');
@@ -39,9 +41,16 @@ export default function EditBabyScreen({ navigation, route }) {
     const dobChanged = dob !== baby?.dob;
 
     const doSave = async () => {
+      // A second tap while saving would save again and go back twice (closing the page behind).
+      if (savingRef.current) return;
+      savingRef.current = true;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       await updateBaby(babyId, { name: name.trim(), dob, gender });
-      if (dobChanged) await regenerateSchedule(babyId, dob);
+      if (dobChanged) {
+        await regenerateSchedule(babyId, dob);
+        // Every due date moved: the vaccine reminders move with them.
+        refreshVaccineReminders(babyId).catch(() => {});
+      }
       navigation.goBack();
     };
 

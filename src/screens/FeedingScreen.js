@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   TextInput, Alert,
@@ -8,11 +8,16 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
 import { useBabyStore } from '../store/useBabyStore';
-import { useFeedingStore, sideSecs } from '../store/useFeedingStore';
+import {
+  useFeedingStore, sideSecs, feedMs, MAX_FEED_HOURS, MAX_FEED_MS,
+} from '../store/useFeedingStore';
+import { setReminders, cancelReminder, feedLimitKey } from '../lib/reminders';
+
+// A sound at the 3-hour mark of a breastfeed, so it is heard with the app closed.
 import { COLORS } from '../constants/colors';
 import { FONT_WEIGHT, RADIUS, SPACING, SHADOW, fs } from '../constants/theme';
 import {
-  formatDurationMins, formatDuration, formatRelative, parsePositiveNumber, startOfToday,
+  formatDurationMins, formatDuration, formatRelative, formatTime, parsePositiveNumber, startOfToday,
 } from '../utils/formatters';
 
 // Local palette for this screen, taken from the user's approved screenshot.
@@ -107,11 +112,41 @@ function BreastSidePicker({ S, onSelect }) {
   );
 }
 
+// The "timer has run for 3 hours" alarm, set for when this feed's counted time reaches the
+// limit. Pausing stops the clock, so pause cancels it and resume sets it again.
+function scheduleFeedLimit(babyId) {
+  const session = useFeedingStore.getState().sessions[babyId];
+  if (!session || session.paused) return;
+  const name = useBabyStore.getState().babies.find((b) => b.id === babyId)?.name || 'Baby';
+  const left = Math.max(0, MAX_FEED_MS - feedMs(session));
+  const bottle = session.type === 'bottle';
+  setReminders(feedLimitKey(babyId), [{
+    at: new Date(Date.now() + left),
+    title: `${name}'s ${bottle ? 'bottle' : 'feeding'} timer has run for ${MAX_FEED_HOURS} hours`,
+    body: bottle ? 'Open the app and enter how long baby drank and how much.'
+      : 'Open the app and enter how long baby fed on each side.',
+  }]).catch(() => {});
+}
+
+function pauseFeed(babyId) {
+  useFeedingStore.getState().pauseSession(babyId);
+  cancelReminder(feedLimitKey(babyId)).catch(() => {});
+}
+
+function resumeFeed(babyId) {
+  useFeedingStore.getState().resumeSession(babyId);
+  scheduleFeedLimit(babyId);
+}
+
 // ─── Breastfeeding Live Timer ─────────────────────────────────────────────────
 
-function BreastfeedTimer({ S, onEnd }) {
-  const session = useFeedingStore((s) => s.session);
-  const { switchSide, pauseSession, resumeSession, endSession } = useFeedingStore.getState();
+function BreastfeedTimer({ S, babyId, onEnd }) {
+  const session = useFeedingStore((s) => s.sessions[babyId]);
+  const store = useFeedingStore.getState();
+  const switchSide = () => store.switchSide(babyId);
+  const pauseSession = () => pauseFeed(babyId);
+  const resumeSession = () => resumeFeed(babyId);
+  const endSession = () => store.endSession(babyId);
   const now = useNow(!!session && !session.paused);
   const [ending, setEnding] = useState(false);
 
@@ -316,10 +351,73 @@ function BottlePrepForm({ S, milkType, setMilkType, unit, setUnit, preparedQty, 
   );
 }
 
+// ─── Breastfeed reached 3 hours: enter the real minutes ─────────────────────────
+
+// "Left  [−15] [−5]  20 min  [+5] [+15]": minutes for one side (or the bottle), up to maxMin.
+function MinutesRow({ S, label, mins, maxMin, onSet }) {
+  const btn = (delta, text) => {
+    const disabled = (delta < 0 && mins <= 0) || (delta > 0 && mins >= maxMin);
+    return (
+      <TouchableOpacity
+        onPress={() => { Haptics.selectionAsync(); onSet(Math.max(0, Math.min(maxMin, mins + delta))); }}
+        disabled={disabled}
+        style={[styles.minStep, { backgroundColor: S.tile, opacity: disabled ? 0.4 : 1 }]}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}: ${delta > 0 ? 'add' : 'remove'} ${Math.abs(delta)} minutes`}
+      >
+        <Text style={[styles.minStepText, { color: S.text }]}>{text}</Text>
+      </TouchableOpacity>
+    );
+  };
+  return (
+    <View style={[styles.minRow, { backgroundColor: S.surface, borderColor: S.border }]}>
+      <Text style={[styles.minLabel, { color: S.text }]}>{label}</Text>
+      {btn(-15, '−15')}
+      {btn(-5, '−5')}
+      <Text style={[styles.minValue, { color: S.text }]}>{mins} min</Text>
+      {btn(5, '+5')}
+      {btn(15, '+15')}
+    </View>
+  );
+}
+
+function BreastFinishForm({ S, session, onSave, saving }) {
+  const leftMin = Math.round(session.leftMs / 60000);
+  const rightMin = Math.round(session.rightMs / 60000);
+  const total = leftMin + rightMin;
+  const set = (side) => (mins) => useFeedingStore.getState().setFeedSide(session.babyId, side, mins * 60000);
+  const limit = MAX_FEED_HOURS * 60;
+
+  return (
+    <HeroCard S={S}>
+      <HeroPill S={S} icon="alert-circle-outline">Feed stopped at {MAX_FEED_HOURS} hours</HeroPill>
+      <Text style={[styles.finishTitle, { color: S.text }]}>How long did baby feed?</Text>
+      <Text style={[styles.switchHint, { color: S.textSecondary }]}>
+        Started {formatTime(session.startTime)}. Set the minutes on each side · at most {MAX_FEED_HOURS} hours in total.
+      </Text>
+      <MinutesRow S={S} label="Left" mins={leftMin} maxMin={limit - rightMin} onSet={set('left')} />
+      <MinutesRow S={S} label="Right" mins={rightMin} maxMin={limit - leftMin} onSet={set('right')} />
+      <Text style={[styles.finishTotal, { color: S.text }]}>Total {formatDurationMins(total * 60)}</Text>
+      <PrimaryButton
+        S={S}
+        onPress={onSave}
+        icon="checkmark-circle-outline"
+        label={saving ? 'Saving…' : 'Save Feed'}
+        accessibilityLabel="Save feed"
+        style={{ opacity: total > 0 && !saving ? 1 : 0.5 }}
+        disabled={total === 0 || saving}
+      />
+    </HeroCard>
+  );
+}
+
 // ─── Bottle Timing View ───────────────────────────────────────────────────────
 
 function BottleTimingView({ S, session }) {
-  const { pauseSession, resumeSession, finishTiming } = useFeedingStore.getState();
+  const store = useFeedingStore.getState();
+  const pauseSession = () => pauseFeed(session.babyId);
+  const resumeSession = () => resumeFeed(session.babyId);
+  const finishTiming = () => { store.finishTiming(session.babyId); cancelReminder(feedLimitKey(session.babyId)); };
   const now = useNow(!session.paused);
   const elapsed = sideSecs(session, 'left', now);
 
@@ -368,22 +466,36 @@ function BottleTimingView({ S, session }) {
 
 function BottleFinishForm({ S, session, consumedQty, setConsumedQty, onSave, saving }) {
   const duration = sideSecs(session, 'left');
+  const durationMin = Math.round(session.leftMs / 60000);
   const maxQty = session.preparedQty || 0;
   const unit = session.unit || 'ml';
   const step = unit === 'oz' ? 0.5 : 5;
 
-  const handleConsumedChange = (v) => {
-    const num = parsePositiveNumber(v) || 0;
-    setConsumedQty(num > maxQty ? fmtQty(maxQty) : v);
-  };
+  // No upper limit: baby may drink more than was first prepared (a top-up).
+  const handleConsumedChange = (v) => setConsumedQty(v);
 
   const stepConsumed = (delta) => {
     const current = parsePositiveNumber(consumedQty) || 0;
-    setConsumedQty(fmtQty(Math.min(maxQty, Math.max(0, current + delta))));
+    setConsumedQty(fmtQty(Math.max(0, current + delta)));
   };
 
   return (
     <HeroCard S={S}>
+      {session.capped ? (
+        <>
+          <HeroPill S={S} icon="alert-circle-outline">Feed stopped at {MAX_FEED_HOURS} hours</HeroPill>
+          <Text style={[styles.switchHint, { color: S.textSecondary }]}>
+            Started {formatTime(session.startTime)}. How long did baby drink? At most {MAX_FEED_HOURS} hours.
+          </Text>
+          <MinutesRow
+            S={S}
+            label="Time"
+            mins={durationMin}
+            maxMin={MAX_FEED_HOURS * 60}
+            onSet={(m) => useFeedingStore.getState().setFeedSide(session.babyId, 'left', m * 60000)}
+          />
+        </>
+      ) : null}
       <InfoBadge S={S} icon="time-outline">
         Duration: {formatDurationMins(duration)} · Prepared: {maxQty} {unit}
       </InfoBadge>
@@ -391,7 +503,7 @@ function BottleFinishForm({ S, session, consumedQty, setConsumedQty, onSave, sav
       <View>
         <Text style={[styles.formSection, { color: S.textSecondary }]}>HOW MUCH DID BABY CONSUME? ({unit})</Text>
         <Text style={[styles.switchHint, { color: S.textSecondary, textAlign: 'left', marginTop: 4 }]}>
-          Max: {maxQty} {unit}
+          Prepared: {maxQty} {unit}. Enter more if baby drank more.
         </Text>
       </View>
       <View style={[styles.qtyCard, { backgroundColor: S.surface, borderColor: S.border }]}>
@@ -471,6 +583,65 @@ function FeedLogItem({ log, S }) {
   );
 }
 
+// ─── Another baby feeding at the same time (twins) ───────────────────────────
+
+function OtherFeedCard({ S, session, name, onOpen, onSaved }) {
+  const now = useNow(!session.paused);
+  const [saving, setSaving] = useState(false);
+  const isBottle = session.type === 'bottle';
+  const capped = !isBottle && session.stage === 'finish';
+  const secs = isBottle ? sideSecs(session, 'left', now) : sideSecs(session, 'left', now) + sideSecs(session, 'right', now);
+  const status = isBottle
+    ? session.stage === 'finish' ? 'Bottle done · enter the amount' : `Bottle · ${formatDurationMins(secs)}`
+    : capped
+      ? `Reached ${MAX_FEED_HOURS} hours · enter the minutes`
+      : `${session.activeSide === 'left' ? 'Left' : 'Right'} breast · ${formatDurationMins(secs)}${session.paused ? ' · paused' : ''}`;
+
+  // A breastfeed can be saved from here; a bottle still needs the amount, so it opens.
+  const stop = async () => {
+    if (saving) return;
+    setSaving(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    await useFeedingStore.getState().endSession(session.babyId);
+    cancelReminder(feedLimitKey(session.babyId));
+    onSaved(name);
+  };
+
+  return (
+    <View style={[styles.otherBaby, { backgroundColor: S.hero }]}>
+      <View style={[styles.otherBabyIcon, { backgroundColor: S.tile }]}>
+        <Ionicons name={isBottle ? 'beaker-outline' : 'heart-outline'} size={22} color={S.blue} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.otherBabyText, { color: S.text }]} numberOfLines={1}>{name} is also feeding</Text>
+        <Text style={[styles.otherBabySub, { color: S.textSecondary }]} numberOfLines={1}>{status}</Text>
+      </View>
+      {isBottle || capped ? (
+        <TouchableOpacity
+          onPress={onOpen}
+          activeOpacity={0.85}
+          style={[styles.otherBabyBtn, { backgroundColor: S.blue }]}
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${name}'s feed`}
+        >
+          <Text style={styles.otherBabyBtnText}>Open</Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          onPress={stop}
+          disabled={saving}
+          activeOpacity={0.85}
+          style={[styles.otherBabyBtn, { backgroundColor: S.blue }]}
+          accessibilityRole="button"
+          accessibilityLabel={`Stop and save ${name}'s feed`}
+        >
+          <Text style={styles.otherBabyBtnText}>Stop</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function FeedingScreen({ navigation }) {
@@ -480,31 +651,76 @@ export default function FeedingScreen({ navigation }) {
   const S = darkMode ? SHOT_DARK : SHOT_LIGHT;
   const insets = useSafeAreaInsets();
 
-  const session = useFeedingStore((s) => s.session);
+  // Every baby has their own timer, so twins can feed at the same time.
+  const sessions = useFeedingStore((s) => s.sessions);
   const logs = useFeedingStore((s) => s.logs[babyId]) || [];
-  const { startSession, cancelSession, load, endSession } = useFeedingStore.getState();
+  const { startSession, load } = useFeedingStore.getState();
 
   const [feedType, setFeedType] = useState(baby?.feedingType === 'bottle' ? 'bottle' : 'breast');
   const [showSuccess, setShowSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [breastSidePicking, setBreastSidePicking] = useState(false);
+  const [breastSidePicking, setFeedSidePicking] = useState(false);
   const [bottlePreparing, setBottlePreparing] = useState(false);
   const [milkType, setMilkType] = useState('formula');
   const [unit, setUnit] = useState('ml');
   const [preparedQty, setPreparedQty] = useState('90');
   const [consumedQty, setConsumedQty] = useState('');
 
+  // A half-filled start form belongs to the baby it was opened for.
   useEffect(() => {
     if (babyId) load(babyId);
+    setFeedSidePicking(false);
+    setBottlePreparing(false);
+    setConsumedQty('');
   }, [babyId]);
 
-  // A timer that belongs to a different baby than the one on screen.
-  const otherBabySession = session && session.babyId !== babyId ? session : null;
-  const mySession = session && session.babyId === babyId ? session : null;
-  const otherBabyName = otherBabySession
-    ? babies.find((b) => b.id === otherBabySession.babyId)?.name || 'another baby'
-    : null;
+  const mySession = sessions[babyId] || null;
+  // Other babies feeding right now (shown as small cards).
+  const otherSessions = Object.values(sessions)
+    .filter((x) => x.babyId !== babyId && babies.some((b) => b.id === x.babyId));
+  const nameOf = (id) => babies.find((b) => b.id === id)?.name || 'Baby';
+  const [savedName, setSavedName] = useState(null);
+
+  // A feed (breast or bottle) that reaches 3 hours stops there; the parent is told once and
+  // enters the real minutes.
+  const warned = useRef(new Set());
+  useEffect(() => {
+    const check = () => {
+      Object.values(useFeedingStore.getState().sessions).forEach((x) => {
+        if (x.stage === 'finish' || feedMs(x) < MAX_FEED_MS) return;
+        useFeedingStore.getState().capFeed(x.babyId);
+        cancelReminder(feedLimitKey(x.babyId));
+        const key = `${x.babyId}@${x.startTime}`;
+        if (warned.current.has(key)) return;
+        warned.current.add(key);
+        const who = nameOf(x.babyId);
+        Alert.alert(
+          `${who}'s feed reached ${MAX_FEED_HOURS} hours`,
+          x.type === 'bottle'
+            ? `A single feed can be at most ${MAX_FEED_HOURS} hours, so the bottle timer stopped. Enter how long ${who} drank and how much, then save.`
+            : `A single feed can be at most ${MAX_FEED_HOURS} hours, so the timer stopped. Enter how many minutes ${who} fed on each side, then save.`,
+          [
+            { text: 'Later', style: 'cancel' },
+            { text: 'Enter the time', onPress: () => { if (x.babyId !== babyId) setActiveBaby(x.babyId); } },
+          ]
+        );
+      });
+    };
+    check();
+    const id = setInterval(check, 15000);
+    return () => clearInterval(id);
+  }, [babyId, babies]);
+
+  const handleBreastFinishSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    await useFeedingStore.getState().endSession(babyId);
+    cancelReminder(feedLimitKey(babyId));
+    setSaving(false);
+    showSaved();
+  };
 
   // When the bottle timer is done, pre-fill "consumed" with the prepared amount.
   useEffect(() => {
@@ -516,13 +732,14 @@ export default function FeedingScreen({ navigation }) {
   const handleStart = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (feedType === 'bottle') setBottlePreparing(true);
-    else setBreastSidePicking(true);
+    else setFeedSidePicking(true);
   };
 
   const handleBreastSideSelect = (side) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setBreastSidePicking(false);
+    setFeedSidePicking(false);
     startSession(babyId, 'breast', side);
+    scheduleFeedLimit(babyId);
   };
 
   const handleBottleStartTimer = () => {
@@ -532,6 +749,7 @@ export default function FeedingScreen({ navigation }) {
     setBottlePreparing(false);
     setConsumedQty('');
     startSession(babyId, 'bottle', 'left', { milkType, unit, preparedQty: prepared });
+    scheduleFeedLimit(babyId);
   };
 
   const showSaved = () => {
@@ -543,14 +761,15 @@ export default function FeedingScreen({ navigation }) {
     if (saving) return;
     setSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await endSession({ consumedQty: parsePositiveNumber(consumedQty) || 0 });
+    await useFeedingStore.getState().endSession(babyId, { consumedQty: parsePositiveNumber(consumedQty) || 0 });
+    cancelReminder(feedLimitKey(babyId));
     setConsumedQty('');
     setSaving(false);
     showSaved();
   };
 
   const resetLocal = () => {
-    setBreastSidePicking(false);
+    setFeedSidePicking(false);
     setBottlePreparing(false);
     setConsumedQty('');
   };
@@ -565,15 +784,16 @@ export default function FeedingScreen({ navigation }) {
       {
         text: 'Discard',
         style: 'destructive',
-        onPress: () => { cancelSession(); resetLocal(); },
+        onPress: () => { useFeedingStore.getState().cancelSession(babyId); cancelReminder(feedLimitKey(babyId)); resetLocal(); },
       },
     ]);
   };
 
-  const showStartScreen = !session && !breastSidePicking && !bottlePreparing;
-  const showBreastPicker = breastSidePicking && !session;
-  const showBottlePrepare = bottlePreparing && !session;
-  const showBreastTimer = mySession?.type === 'breast';
+  const showStartScreen = !mySession && !breastSidePicking && !bottlePreparing;
+  const showBreastPicker = breastSidePicking && !mySession;
+  const showBottlePrepare = bottlePreparing && !mySession;
+  const showBreastTimer = mySession?.type === 'breast' && mySession.stage !== 'finish';
+  const showBreastFinish = mySession?.type === 'breast' && mySession.stage === 'finish';
   const showBottleTiming = mySession?.type === 'bottle' && mySession.stage !== 'finish';
   const showBottleFinish = mySession?.type === 'bottle' && mySession.stage === 'finish';
   const showCancel = showBreastPicker || showBottlePrepare || !!mySession;
@@ -619,26 +839,24 @@ export default function FeedingScreen({ navigation }) {
           </View>
         )}
 
-        {/* Timer running for a different baby */}
-        {otherBabySession && (
-          <View style={[styles.otherBaby, { backgroundColor: S.hero }]}>
-            <View style={[styles.otherBabyIcon, { backgroundColor: S.tile }]}>
-              <Ionicons name="time-outline" size={22} color={S.blue} />
-            </View>
-            <Text style={[styles.otherBabyText, { color: S.text }]}>
-              A feeding timer is running for {otherBabyName}.
-            </Text>
-            <TouchableOpacity
-              onPress={() => setActiveBaby(otherBabySession.babyId)}
-              activeOpacity={0.85}
-              style={[styles.otherBabyBtn, { backgroundColor: S.blue }]}
-              accessibilityRole="button"
-              accessibilityLabel={`Switch to ${otherBabyName}`}
-            >
-              <Text style={styles.otherBabyBtnText}>Open</Text>
-            </TouchableOpacity>
+        {savedName ? (
+          <View style={[styles.successToast, { backgroundColor: S.card, borderColor: COLORS.success + '40' }]}>
+            <Ionicons name="checkmark-circle-outline" size={22} color={COLORS.success} />
+            <Text style={[styles.successText, { color: S.text }]}>{savedName}'s feed logged!</Text>
           </View>
-        )}
+        ) : null}
+
+        {/* Other babies feeding at the same time (twins): their own timers keep running. */}
+        {otherSessions.map((x) => (
+          <OtherFeedCard
+            key={x.babyId}
+            S={S}
+            session={x}
+            name={nameOf(x.babyId)}
+            onOpen={() => setActiveBaby(x.babyId)}
+            onSaved={(n) => { setSavedName(n); setTimeout(() => setSavedName(null), 3000); }}
+          />
+        ))}
 
         {/* Start screen */}
         {showStartScreen && (
@@ -691,7 +909,13 @@ export default function FeedingScreen({ navigation }) {
 
         {showBreastPicker && <BreastSidePicker S={S} onSelect={handleBreastSideSelect} />}
 
-        {showBreastTimer && <BreastfeedTimer S={S} onEnd={showSaved} />}
+        {showBreastTimer && (
+          <BreastfeedTimer S={S} babyId={babyId} onEnd={() => { cancelReminder(feedLimitKey(babyId)); showSaved(); }} />
+        )}
+
+        {showBreastFinish && (
+          <BreastFinishForm S={S} session={mySession} onSave={handleBreastFinishSave} saving={saving} />
+        )}
 
         {showBottlePrepare && (
           <BottlePrepForm
@@ -866,7 +1090,18 @@ const styles = StyleSheet.create({
     padding: 14, borderRadius: 24, marginBottom: SPACING.md,
   },
   otherBabyIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  otherBabyText: { flex: 1, fontSize: fs(15), fontWeight: FONT_WEIGHT.semibold },
+  otherBabyText: { fontSize: fs(15), fontWeight: FONT_WEIGHT.semibold },
+  finishTitle: { fontSize: fs(20), fontWeight: FONT_WEIGHT.heavy, marginTop: SPACING.sm },
+  finishTotal: { fontSize: fs(18), fontWeight: FONT_WEIGHT.heavy, textAlign: 'center', marginVertical: SPACING.sm },
+  minRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, marginTop: SPACING.sm,
+    borderRadius: RADIUS.lg, borderWidth: 1,
+  },
+  minLabel: { width: 44, fontSize: fs(15), fontWeight: FONT_WEIGHT.bold },
+  minValue: { flex: 1, textAlign: 'center', fontSize: fs(16), fontWeight: FONT_WEIGHT.heavy },
+  minStep: { minWidth: 44, minHeight: 44, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
+  minStepText: { fontSize: fs(14), fontWeight: FONT_WEIGHT.bold },
+  otherBabySub: { fontSize: fs(13), fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
   otherBabyBtn: {
     minHeight: 48, justifyContent: 'center', paddingHorizontal: 20, borderRadius: RADIUS.full,
   },

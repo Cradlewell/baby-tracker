@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -8,10 +8,7 @@ import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
 import GradientView from '../components/GradientView';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
 import { calcAge } from '../utils/formatters';
-import { useAuthStore } from '../store/useAuthStore';
-import { openSwitchClient } from '../lib/switchClientFlow';
-import { exportReport, openReport } from '../lib/reportPdf';
-import ExportSheet from '../components/ExportSheet';
+import { useHealthCheck } from '../lib/useHealthCheck';
 
 function MenuSection({ title, items, C }) {
   return (
@@ -26,22 +23,22 @@ function MenuSection({ title, items, C }) {
               accessibilityRole="button"
               accessibilityLabel={item.label}
             >
-              <View style={[styles.menuIcon, { backgroundColor: C.primaryLight }]}>
+              <View style={[styles.menuIcon, { backgroundColor: item.tint || C.primaryLight }]}>
                 {item.mci ? (
-                  <MaterialCommunityIcons name={item.mci} size={22} color={C.primary} />
+                  <MaterialCommunityIcons name={item.mci} size={22} color={item.iconColor || C.primary} />
                 ) : (
-                  <Ionicons name={item.icon.endsWith('-outline') ? item.icon : `${item.icon}-outline`} size={22} color={C.primary} />
+                  <Ionicons name={item.icon.endsWith('-outline') ? item.icon : `${item.icon}-outline`} size={22} color={item.iconColor || C.primary} />
                 )}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.menuLabel, { color: C.text }]}>{item.label}</Text>
                 {item.sub && <Text style={[styles.menuSub, { color: C.textSecondary }]}>{item.sub}</Text>}
               </View>
-              {item.badge && (
+              {item.badge ? (
                 <View style={[styles.badge, { backgroundColor: item.badgeColor || COLORS.error }]}>
                   <Text style={styles.badgeText}>{item.badge}</Text>
                 </View>
-              )}
+              ) : null}
               <Ionicons name="chevron-forward" size={16} color={C.textMuted} />
             </TouchableOpacity>
             {i < items.length - 1 && <View style={[styles.divider, { backgroundColor: C.border }]} />}
@@ -52,47 +49,25 @@ function MenuSection({ title, items, C }) {
   );
 }
 
-export default function MoreScreen({ navigation }) {
-  const { getActiveBaby, darkMode, babies, activeBabyId } = useBabyStore();
+/** The Health tab: the baby's health records, medicines, vaccines and today's health check. */
+export default function HealthScreen({ navigation }) {
+  const { getActiveBaby, darkMode } = useBabyStore();
   const baby = getActiveBaby();
   const C = darkMode ? DARK_COLORS : COLORS;
-  const client = useAuthStore((s) => s.client);
-  const user = useAuthStore((s) => s.user);
   const insets = useSafeAreaInsets();
-
-  // Export: choose the baby (when there are several) and the report, then save the PDF
-  // and offer to open it.
-  const [exportOpen, setExportOpen] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const runExport = async (babyId, kind) => {
-    setExportOpen(false);
-    setExporting(true);
-    try {
-      const file = await exportReport(kind, babyId);
-      Alert.alert('Download complete', file.name, [
-        { text: 'Close', style: 'cancel' },
-        {
-          text: 'Open',
-          onPress: () => openReport(file.uri).catch((err) => Alert.alert('Could not open the report', err?.message || 'Please try again.')),
-        },
-      ]);
-    } catch (err) {
-      Alert.alert('Could not create the report', err?.message || 'Please try again.');
-    } finally {
-      setExporting(false);
-    }
-  };
+  const { alerts } = useHealthCheck();
+  const urgent = alerts.filter((a) => a.level === 'urgent').length;
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
-          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 },
+          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 110 },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.pageTitle, { color: C.text }]}>More</Text>
+        <Text style={[styles.pageTitle, { color: C.text }]}>Health</Text>
 
         {/* Baby card */}
         {baby && (
@@ -120,18 +95,24 @@ export default function MoreScreen({ navigation }) {
         )}
 
         <MenuSection
-          title="TRACK"
+          title="TODAY"
           C={C}
           items={[
-            { label: 'Temperature', sub: 'Track body temperature', mci: 'thermometer', onPress: () => navigation.navigate('Temperature') },
-            { label: 'Breathing', sub: 'Respiratory rate & effort', mci: 'lungs', onPress: () => navigation.navigate('Breathing') },
-            { label: 'Skin & Jaundice', sub: 'Rash, yellowing, skin changes', mci: 'face-man-shimmer-outline', onPress: () => navigation.navigate('Skin') },
-            { label: 'Milestones', sub: 'Track development', icon: 'flag-outline', onPress: () => navigation.navigate('Milestones') },
+            {
+              label: 'Health alerts',
+              sub: alerts.length ? `${alerts.length} to check${urgent ? ` · ${urgent} urgent` : ''}` : 'Everything logged is within the usual range',
+              icon: alerts.length ? 'alert-circle' : 'checkmark-circle',
+              tint: alerts.length ? (urgent ? COLORS.error + '1F' : COLORS.warning + '1F') : COLORS.success + '1F',
+              iconColor: alerts.length ? (urgent ? COLORS.error : COLORS.warning) : COLORS.success,
+              badge: alerts.length ? String(alerts.length) : null,
+              badgeColor: urgent ? COLORS.error : COLORS.warning,
+              onPress: () => navigation.navigate('HealthAlerts'),
+            },
           ]}
         />
 
         <MenuSection
-          title="MANAGE"
+          title="MEDICINES & VACCINES"
           C={C}
           items={[
             { label: 'Medication', sub: 'Track doses & reminders', mci: 'calendar-clock', onPress: () => navigation.navigate('Medicine') },
@@ -140,58 +121,23 @@ export default function MoreScreen({ navigation }) {
         />
 
         <MenuSection
-          title="REPORTS"
+          title="HEALTH CHECKS"
           C={C}
           items={[
-            {
-              label: 'Export Data',
-              sub: exporting ? 'Preparing report…' : "Today's or 30-day report as PDF",
-              icon: 'download',
-              onPress: () => { if (!exporting) setExportOpen(true); },
-            },
+            { label: 'Temperature', sub: 'Track body temperature', mci: 'thermometer', onPress: () => navigation.navigate('Temperature') },
+            { label: 'Breathing', sub: 'Respiratory rate & effort', mci: 'lungs', onPress: () => navigation.navigate('Breathing') },
+            { label: 'Skin & Jaundice', sub: 'Rash, yellowing, skin changes', mci: 'face-man-shimmer-outline', onPress: () => navigation.navigate('Skin') },
           ]}
         />
-
-        {user?.role === 'client' ? null : (
-        <MenuSection
-          title="CLIENT"
-          C={C}
-          items={[
-            {
-              label: 'Switch Client',
-              sub: client?.name ? `Now: ${client.name} · enter another phone number` : "Enter another client's phone number",
-              icon: 'swap-horizontal',
-              onPress: () => openSwitchClient(navigation),
-            },
-          ]}
-        />
-        )}
 
         <MenuSection
-          title="PREFERENCES"
+          title="DEVELOPMENT"
           C={C}
           items={[
-            {
-              label: 'Settings',
-              sub: 'Dark mode, baby profiles, account',
-              icon: 'settings',
-              color: COLORS.textSecondary,
-              onPress: () => navigation.navigate('Settings'),
-            },
+            { label: 'Milestones', sub: 'Smiles, rolling, sitting and more', icon: 'flag-outline', onPress: () => navigation.navigate('Milestones') },
           ]}
         />
-
-        <Text style={[styles.version, { color: C.textMuted }]}>Cradlewell Bloom v1.0 · Your comfort is our care</Text>
       </ScrollView>
-
-      <ExportSheet
-        visible={exportOpen}
-        babies={babies}
-        activeBabyId={activeBabyId}
-        C={C}
-        onClose={() => setExportOpen(false)}
-        onChoose={runExport}
-      />
     </View>
   );
 }
@@ -226,5 +172,4 @@ const styles = StyleSheet.create({
   divider: { height: 1, marginLeft: 76, marginRight: SPACING.md },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.full },
   badgeText: { fontSize: FONT_SIZE.xs, color: COLORS.white, fontWeight: FONT_WEIGHT.bold },
-  version: { textAlign: 'center', fontSize: FONT_SIZE.sm, marginTop: SPACING.md },
 });

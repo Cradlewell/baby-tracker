@@ -36,7 +36,7 @@ export default function TemperatureScreen({ navigation }) {
   const save = async () => {
     if (!plausible) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await addLog(babyId, { celsius, method, notes: notes.trim() });
+    addLog(babyId, { celsius, method, notes: notes.trim() });
     setValue('');
     setNotes('');
   };

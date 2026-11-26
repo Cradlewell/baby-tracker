@@ -1,7 +1,7 @@
 import { format } from 'date-fns';
 import { parseDob, toMl } from '../utils/formatters';
 import { CHART_COLORS as CH } from '../constants/colors';
-import { URINE_COLORS, STOOL_COLORS, findColor } from '../store/useDiaperStore';
+import { STOOL_COLORS, findColor, urineColourOf } from '../store/useDiaperStore';
 
 // One day of care, worked out once and shown two ways: the Daily Summary screen
 // (components/DailyReport.js) and today's PDF report (dailyReportHtml below).
@@ -29,6 +29,45 @@ export function niceMax(v) {
   const mag = 10 ** Math.floor(Math.log10(raw));
   const step = [1, 2, 2.5, 5, 10].map((s) => s * mag).find((s) => s >= raw);
   return step * 4;
+}
+
+/**
+ * Time window for a feeding chart: from the hour of the day's first feed to the hour after
+ * the last one (at least 4 hours, never outside the day), instead of always 00:00–24:00.
+ * Returns { from, to, ticks } in ms; ticks are 1, 2, 3 or 4 hours apart (at most 7 labels).
+ */
+export function feedWindow(times, dayStart) {
+  const dayEnd = dayStart + DAY_MS;
+  if (!times.length) return { from: dayStart, to: dayEnd, ticks: [0, 4, 8, 12, 16, 20, 24].map((h) => dayStart + h * HOUR) };
+  const firstH = Math.floor((Math.min(...times) - dayStart) / HOUR);
+  const lastH = Math.floor((Math.max(...times) - dayStart) / HOUR) + 1;
+  const hours = Math.max(4, lastH - firstH);
+  const step = [1, 2, 3, 4].find((s) => hours / s <= 6);
+  const span = Math.ceil(hours / step) * step;
+  let from = firstH;
+  if (from + span > 24) from = 24 - span;
+  const ticks = [];
+  for (let h = from; h <= from + span; h += step) ticks.push(dayStart + h * HOUR);
+  return { from: dayStart + from * HOUR, to: dayStart + (from + span) * HOUR, ticks };
+}
+
+/** 00:00 … 23:00, and 24:00 for the end of the day. */
+export const tickLabel = (ms, dayStart) => (ms - dayStart >= DAY_MS ? '24:00' : format(ms, 'HH:mm'));
+
+/**
+ * Heights for value labels above bars ({ x, y } with y = bar top), so no two labels overlap:
+ * a label that would run into the one before it moves up a line. Returns the label y's.
+ */
+export function stackLabels(items, width, lineH) {
+  const placed = [];
+  return items.map(({ x, y }) => {
+    let ly = y;
+    for (let k = placed.length - 1; k >= 0 && x - placed[k].x < width; k -= 1) {
+      if (Math.abs(placed[k].y - ly) < lineH) { ly = placed[k].y - lineH; k = placed.length; }
+    }
+    placed.push({ x, y: ly });
+    return ly;
+  });
 }
 
 // Diapers are saved with eventType ('urine' | 'stool' | 'both' | 'dry').
@@ -85,7 +124,7 @@ export function buildDailyData({ day, now = new Date(), feeds = [], sleeps = [],
       at: t(d.eventTime || d.createdAt),
       type: diaperType(d),
       // Logged colours ({ value, label, swatch }), or null when none was chosen.
-      urine: findColor(URINE_COLORS, d.urineColor),
+      urine: urineColourOf(d),
       stool: findColor(STOOL_COLORS, d.stoolColor),
     }))
     .sort((a, b) => a.at - b.at);
@@ -100,7 +139,7 @@ export function buildDailyData({ day, now = new Date(), feeds = [], sleeps = [],
     .sort((a, b) => a.at - b.at);
 
   // ---- Monitoring table: one row per event ----
-  // Columns: 0 LB, 1 RB, 2 Total, 3 bottle min, 4 mL, 5 sleep, 6 awake, 7 wet, 8 stool, 9 both.
+  // Columns: 0 LB, 1 RB, 2 Total, 3 bottle min, 4 mL, 5 sleep, 6 awake, 7 wet, 8 stool, 9 both, 10 dry.
   const rows = [];
   breast.forEach((f) => rows.push({ at: f.at, cells: { 0: f.left, 1: f.right, 2: f.left + f.right } }));
   bottle.forEach((f) => rows.push({ at: f.at, cells: { 3: f.min, 4: f.ml } }));
@@ -114,7 +153,7 @@ export function buildDailyData({ day, now = new Date(), feeds = [], sleeps = [],
     rows.push({ at: s, cells: { 5: hm((e - s) / 1000), ...(after ? { 6: hm((after[1] - after[0]) / 1000) } : {}) } });
   });
   diaperList.forEach((d) => {
-    const col = { urine: 7, stool: 8, both: 9 }[d.type];
+    const col = { urine: 7, stool: 8, both: 9, dry: 10 }[d.type];
     if (col != null) rows.push({ at: d.at, cells: { [col]: true } });
   });
   rows.sort((a, b) => a.at - b.at);
@@ -139,36 +178,26 @@ export function buildDailyData({ day, now = new Date(), feeds = [], sleeps = [],
     dry: count('dry'),
   };
   const totals = [s.breastLeft, s.breastRight, s.breastLeft + s.breastRight, s.bottleMin, s.bottleMl,
-    sleepParts.length ? hm(s.sleepSecs) : 0, sleepParts.length ? hm(s.awakeSecs) : 0, s.wet, s.stool, s.both];
+    sleepParts.length ? hm(s.sleepSecs) : 0, sleepParts.length ? hm(s.awakeSecs) : 0, s.wet, s.stool, s.both, s.dry];
 
-  // Colours logged on this day, for the chart key.
-  const diaperColours = [];
-  diaperList.forEach((d) => {
-    [['Urine', d.urine], ['Stool', d.stool]].forEach(([kind, c]) => {
-      if (c && !diaperColours.some((x) => x.kind === kind && x.value === c.value)) {
-        diaperColours.push({ kind, value: c.value, label: c.label, swatch: c.swatch, warn: !!c.warn });
-      }
-    });
-  });
-
-  return { start, end, breast, bottle, sleepParts, awakeParts, diapers: diaperList, diaperColours, meds, vacc, rows, totals, s };
+  return { start, end, breast, bottle, sleepParts, awakeParts, diapers: diaperList, meds, vacc, rows, totals, s };
 }
 
-// ======================= PDF (today's report) =======================
+// ======================= PDF (daily report) =======================
 
-const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({
+export const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[c]));
 const hhmm = (ms) => format(ms, 'HH:mm');
 
-const INK = '#1B1F2E';
-const MUTED = '#5B6280';
-const LINE = '#E6E8F5';
+export const INK = '#1B1F2E';
+export const MUTED = '#5B6280';
+export const LINE = '#E6E8F5';
 
 // Charts are inline SVG, 640 wide.
-const W = 640;
-const L = 80;
-const R = 620;
+export const W = 640;
+export const L = 96; // room for the y-axis name and the values / lane names
+export const R = 620;
 
 function timeAxis(base, vTop) {
   let s = '';
@@ -181,8 +210,23 @@ function timeAxis(base, vTop) {
   return s;
 }
 
-function valueGrid(max, top, base, title) {
-  let s = `<text x="${L - 40}" y="${top - 26}" class="axt">${esc(title)}</text>`;
+// Feeding charts: the axis runs from the first feed of the day, not from 00:00.
+function feedScale(list, dayStart) {
+  const win = feedWindow(list.map((f) => f.at), dayStart);
+  const pad = 16; // keeps a bar on the first or last hour off the axis line
+  const xAt = (ms) => L + pad + ((Math.min(Math.max(ms, win.from), win.to) - win.from) / (win.to - win.from)) * (R - L - 2 * pad);
+  const axis = (base) => win.ticks.map((t) =>
+    `<text x="${xAt(t)}" y="${base + 24}" text-anchor="middle" class="ax">${tickLabel(t, dayStart)}</text>`).join('')
+    + `<text x="${(L + R) / 2}" y="${base + 54}" text-anchor="middle" class="axt">Time of day</text>`;
+  return { xAt, axis };
+}
+
+/** The y-axis name, running up the left edge, centred on the plot (top to base). */
+export const yTitle = (title, top, base) =>
+  `<text transform="rotate(-90)" x="${-(top + base) / 2}" y="18" text-anchor="middle" class="axt">${esc(title)}</text>`;
+
+export function valueGrid(max, top, base, title) {
+  let s = yTitle(title, top, base);
   for (let i = 0; i <= 4; i += 1) {
     const y = base - ((base - top) * i) / 4;
     const v = (max * i) / 4;
@@ -192,10 +236,11 @@ function valueGrid(max, top, base, title) {
   return s;
 }
 
-const svg = (h, body) => `<svg viewBox="0 0 ${W} ${h}" width="100%" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
+export const svg = (h, body) => `<svg viewBox="0 0 ${W} ${h}" width="100%" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
 
-function breastChart(list, xAt) {
-  const top = 70;
+function breastChart(list, dayStart) {
+  const { xAt, axis } = feedScale(list, dayStart);
+  const top = 30;
   const base = 300;
   const max = niceMax(Math.max(...list.map((f) => Math.max(f.left, f.right))));
   const h = (v) => ((base - top) * v) / max;
@@ -205,11 +250,12 @@ function breastChart(list, xAt) {
     if (f.left) bars += `<rect x="${x - 8}" y="${base - h(f.left)}" width="7" height="${h(f.left)}" rx="1" fill="${CH.left}"/>`;
     if (f.right) bars += `<rect x="${x + 1}" y="${base - h(f.right)}" width="7" height="${h(f.right)}" rx="1" fill="${CH.right}"/>`;
   });
-  return svg(base + 64, valueGrid(max, top, base, 'Duration (min)') + bars + timeAxis(base, null));
+  return svg(base + 64, valueGrid(max, top, base, 'Duration (min)') + bars + axis(base));
 }
 
-function bottleChart(list, xAt) {
-  const top = 70;
+function bottleChart(list, dayStart) {
+  const { xAt, axis } = feedScale(list, dayStart);
+  const top = 40;
   const base = 300;
   const max = niceMax(Math.max(...list.map((f) => f.ml)));
   const h = (v) => ((base - top) * v) / max;
@@ -217,166 +263,114 @@ function bottleChart(list, xAt) {
   list.forEach((f) => {
     const x = xAt(f.at);
     bars += `<rect x="${x - 12}" y="${base - h(f.ml)}" width="24" height="${h(f.ml)}" rx="3" fill="${CH.bottle}"/>`;
-    bars += `<text x="${x}" y="${base - h(f.ml) - 10}" text-anchor="middle" class="val">${f.ml}</text>`;
+    bars += `<text x="${x}" y="${base - h(f.ml) - 7}" text-anchor="middle" class="val">${f.ml}ml</text>`;
   });
-  return svg(base + 64, valueGrid(max, top, base, 'Milk consumed (mL)') + bars + timeAxis(base, null));
+  return svg(base + 64, valueGrid(max, top, base, 'Milk consumed (mL)') + bars + axis(base));
 }
 
 function sleepChart(sleepParts, awakeParts, xAt) {
   const base = 280;
   const lane = (label, y, list, colour) =>
-    `<text x="4" y="${y + 6}" class="lane">${label}</text>` +
+    `<text x="30" y="${y + 6}" class="lane">${label}</text>` +
     list.map(([s, e]) => {
       const x1 = xAt(s);
       return `<rect x="${x1}" y="${y - 40}" width="${Math.max(3, xAt(e) - x1)}" height="80" rx="3" fill="${colour}"/>`;
     }).join('');
-  return svg(base + 64, timeAxis(base, 20)
+  return svg(base + 64, timeAxis(base, 20) + yTitle('Sleep state', 20, base)
     + lane('Sleep', 80, sleepParts, CH.sleep) + lane('Awake', 200, awakeParts, CH.awake));
 }
 
+/**
+ * Diaper marker shapes, sized to look about as big as a circle of radius r:
+ * wet = circle, stool = square, both = diamond (left half urine, right half stool), dry = triangle.
+ * Each returns SVG path data; `diaperShape` gives the outline, `diamondHalves` the two halves.
+ */
+export function diaperShape(type, cx, cy, r) {
+  if (type === 'stool') {
+    const h = r * 0.88;
+    return `M${cx - h},${cy - h} H${cx + h} V${cy + h} H${cx - h} Z`;
+  }
+  if (type === 'both') {
+    const h = r * 1.25;
+    return `M${cx},${cy - h} L${cx + h},${cy} L${cx},${cy + h} L${cx - h},${cy} Z`;
+  }
+  if (type === 'dry') {
+    const h = r * 1.2;
+    return `M${cx},${cy - h} L${cx + h},${cy + h * 0.8} L${cx - h},${cy + h * 0.8} Z`;
+  }
+  return `M${cx - r},${cy} A${r},${r} 0 1 0 ${cx + r},${cy} A${r},${r} 0 1 0 ${cx - r},${cy} Z`;
+}
+export function diamondHalves(cx, cy, r) {
+  const h = r * 1.25;
+  return [
+    `M${cx},${cy - h} L${cx - h},${cy} L${cx},${cy + h} Z`,
+    `M${cx},${cy - h} L${cx + h},${cy} L${cx},${cy + h} Z`,
+  ];
+}
+
+/**
+ * One diaper as an SVG marker in its logged colour and its type's shape: urine colour for wet,
+ * stool colour for stool, half urine / half stool for both, and the dry colour for dry.
+ * Unlogged colours fall back to the colour of the type.
+ */
+export function diaperDot(d, cx, cy, r) {
+  const ring = 'stroke="#8C92AE" stroke-width="1"';
+  const outline = diaperShape(d.type, cx, cy, r);
+  if (d.type === 'both') {
+    const [left, right] = diamondHalves(cx, cy, r);
+    return `<path d="${left}" fill="${d.urine?.swatch || CH.wet}"/>`
+      + `<path d="${right}" fill="${d.stool?.swatch || CH.stool}"/>`
+      + `<path d="${outline}" fill="none" ${ring} stroke-linejoin="round"/>`;
+  }
+  const fill = d.type === 'urine' ? d.urine?.swatch || CH.wet
+    : d.type === 'stool' ? d.stool?.swatch || CH.stool : CH.dry;
+  return `<path d="${outline}" fill="${fill}" ${ring} stroke-linejoin="round"/>`;
+}
+
+/**
+ * The chart key: each diaper type's shape. Wet and dry always have the same colour, so they
+ * are shown in it; stool and both vary with the logged stool colour, so they are grey.
+ */
+export const DIAPER_SHAPES = [['urine', 'Wet'], ['stool', 'Stool'], ['both', 'Both'], ['dry', 'Dry']];
+export const keyFill = (type, grey) => (type === 'urine' ? CH.wet : type === 'dry' ? CH.dry : grey);
+export const shapeKey = () => `<div class="ckey shapes">${DIAPER_SHAPES.map(([type, label]) =>
+  `<span><svg width="16" height="16" viewBox="0 0 16 16"><path d="${diaperShape(type, 8, 8, 5.5)}" fill="${keyFill(type, '#C9CCE0')}" stroke="#8C92AE" stroke-width="1" stroke-linejoin="round"/></svg>${label}</span>`).join('')}</div>`;
+
 function diaperChart(list, xAt) {
-  const lanes = [['Wet', 'urine', 50, CH.wet], ['Stool', 'stool', 150, CH.stool], ['Both', 'both', 250, CH.both]];
-  const base = 300;
-  let s = timeAxis(base, 10);
-  lanes.forEach(([label, type, y, colour]) => {
+  const lanes = [['Wet', 'urine', 45], ['Stool', 'stool', 125], ['Both', 'both', 205], ['Dry', 'dry', 285]];
+  const base = 320;
+  let s = timeAxis(base, 10) + yTitle('Diaper type', 10, base);
+  lanes.forEach(([label, type, y]) => {
     s += `<line x1="${L}" y1="${y}" x2="${R}" y2="${y}" stroke="${LINE}" stroke-width="1.5"/>`;
-    s += `<text x="4" y="${y + 6}" class="lane">${label}</text>`;
-    list.filter((d) => d.type === type).forEach((d) => {
-      const cx = xAt(d.at);
-      const ring = `stroke="#8C92AE" stroke-width="1"`;
-      if (type === 'both') {
-        // Half urine colour (left), half stool colour (right).
-        const u = d.urine?.swatch || CH.wet;
-        const st = d.stool?.swatch || CH.stool;
-        s += `<path d="M${cx},${y - 10} A10,10 0 0 0 ${cx},${y + 10} Z" fill="${u}"/>`;
-        s += `<path d="M${cx},${y - 10} A10,10 0 0 1 ${cx},${y + 10} Z" fill="${st}"/>`;
-        s += `<circle cx="${cx}" cy="${y}" r="10" fill="none" ${ring}/>`;
-      } else {
-        const c = (type === 'urine' ? d.urine?.swatch : d.stool?.swatch) || colour;
-        s += `<circle cx="${cx}" cy="${y}" r="10" fill="${c}" ${ring}/>`;
-      }
-    });
+    s += `<text x="30" y="${y + 6}" class="lane">${label}</text>`;
+    list.filter((d) => d.type === type).forEach((d) => { s += diaperDot(d, xAt(d.at), y, 10); });
   });
   return svg(base + 64, s);
 }
 
-const stat = (label, value, colour, big = true) =>
+export const stat = (label, value, colour, big = true) =>
   `<div class="stat"><span>${esc(label)}</span><b class="${big ? 'big' : ''}" ${colour ? `style="color:${colour}"` : ''}>${esc(value)}</b></div>`;
-const legend = (items) =>
+export const legend = (items) =>
   `<div class="legend">${items.map(([label, colour]) => `<span><i style="background:${colour}"></i>${esc(label)}</span>`).join('')}</div>`;
 /** Share of a in a + b, as text with one decimal: 53.5% */
 export const pct = (a, b) => `${(a + b > 0 ? (a / (a + b)) * 100 : 0).toFixed(1)}%`;
 
-const split = (a, b, colourA, colourB, caption, labels, labelColours = []) => {
+export const split = (a, b, colourA, colourB, caption, labels, labelColours = []) => {
   if (!(a + b)) return '';
   return `${caption ? `<p class="cap">${esc(caption)}</p>` : ''}<div class="split"><i style="width:${(a / (a + b)) * 100}%;background:${colourA}"></i><i style="flex:1;background:${colourB}"></i></div>${
     labels ? `<div class="splitlab"><span${labelColours[0] ? ` style="color:${labelColours[0]}"` : ''}>${esc(labels[0])}: ${pct(a, b)}</span><span${labelColours[1] ? ` style="color:${labelColours[1]}"` : ''}>${esc(labels[1])}: ${pct(b, a)}</span></div>` : ''}`;
 };
-const empty = (text) => `<p class="empty">${esc(text)}</p>`;
-const section = (n, title, body) => `<section><h2>${n}. ${esc(title)}</h2>${body}</section>`;
+export const empty = (text) => `<p class="empty">${esc(text)}</p>`;
+export const section = (n, title, body) => `<section><h2>${n}. ${esc(title)}</h2>${body}</section>`;
 
 /**
- * Today's report as HTML for expo-print.
- * others: recentActivity entries for other checks of the day ({ at, label, value })
+ * The report's name, also used for the PDF file:
+ * Cradlewell_Aarav Sharma_26 Nov 2026  ·  Cradlewell_Aarav Sharma_October 2026
  */
-export function dailyReportHtml({ baby, day, now, feeds, sleeps, diapers, medicines, vaccines, others = [] }) {
-  const d = buildDailyData({ day, now, feeds, sleeps, diapers, medicines, vaccines });
-  const { start, end, s } = d;
-  const xAt = (ms) => L + (Math.min(Math.max(ms - start, 0), DAY_MS) / DAY_MS) * (R - L);
+export const reportName = (baby, when) => `Cradlewell_${(baby?.name || 'Baby').trim()}_${when}`;
 
-  const DASH = '<span class="dash">–</span>';
-  const TICK = '<span class="tick">✓</span>';
-  const cell = (v) => (v === true ? TICK : v === undefined || v === null || v === '' ? DASH : esc(v));
-  const table = d.rows.length ? `<table class="mon">
-    <thead>
-      <tr><th rowspan="2" class="tl">Time</th><th colspan="3">Breastfeeding (min)</th><th colspan="2">Bottle feeding</th>
-        <th colspan="2">Sleep cycle</th><th colspan="3">Diapers</th></tr>
-      <tr class="sub"><th>LB</th><th>RB</th><th>Total</th><th>Min</th><th>mL</th><th>Sleep</th><th>Awake</th>
-        <th>Wet</th><th>Stool</th><th>Both</th></tr>
-    </thead>
-    <tbody>
-      ${d.rows.map((r) => `<tr><td class="tl">${hhmm(r.at)}</td>${Array.from({ length: 10 }, (_, i) => `<td>${cell(r.cells[i])}</td>`).join('')}</tr>`).join('')}
-      <tr class="tot"><td class="tl">Total</td>${d.totals.map((v) => `<td>${esc(v)}</td>`).join('')}</tr>
-    </tbody>
-  </table>` : empty('Nothing was recorded on this day.');
-
-  const medBody = d.meds.length ? `<table class="list">
-    <tr><th>Medicine / Supplement name</th><th>Dose</th><th>Time administered</th></tr>
-    ${d.meds.map((m) => `<tr><td>${esc(m.name)}${m.skipped ? ' <span class="warn">(skipped)</span>' : ''}</td>
-      <td>${esc(m.dose)}</td><td>${format(m.at, 'hh:mm a')}</td></tr>`).join('')}
-  </table>` : empty('No medicines or supplements recorded.');
-
-  const vaccBody = d.vacc.length ? `<table class="list">
-    <tr><th>Vaccine name</th><th>Time administered</th></tr>
-    ${d.vacc.map((v) => `<tr><td>${esc(v.name)}</td><td>${format(v.at, 'hh:mm a')}</td></tr>`).join('')}
-  </table>` : empty('No vaccines given on this day.');
-
-  const breastBody = d.breast.length ? `<div class="box">
-    <div class="stats">
-      ${stat('Total breastfeeding sessions', d.breast.length)}
-      ${stat('Total breastfeeding duration', hm((s.breastLeft + s.breastRight) * 60))}
-      ${stat('Left breast', `${s.breastLeft} min (${pct(s.breastLeft, s.breastRight)})`, CH.left)}
-      ${stat('Right breast', `${s.breastRight} min (${pct(s.breastRight, s.breastLeft)})`, '#4A63D9')}
-    </div>
-    ${legend([['Left breast', CH.left], ['Right breast', CH.right]])}
-    ${breastChart(d.breast, xAt)}
-    ${split(s.breastLeft, s.breastRight, CH.left, CH.right, null, ['Left breast', 'Right breast'])}
-  </div>` : empty('No breastfeeds recorded.');
-
-  const bottleBody = d.bottle.length ? `<div class="box">
-    <div class="stats">
-      ${stat('Total feeds', d.bottle.length)}
-      ${stat('Total milk consumed', `${s.bottleMl} mL`, CH.bottle)}
-      ${stat('Total feeding duration', `${s.bottleMin} minutes`, null, false)}
-      ${stat('Average milk per feed', `${Math.round(s.bottleMl / d.bottle.length)} mL`, null, false)}
-    </div>
-    ${bottleChart(d.bottle, xAt)}
-  </div>` : empty('No bottle feeds recorded.');
-
-  const sleepBody = d.sleepParts.length ? `<div class="box">
-    <div class="stats">
-      ${stat('Total sleep duration', `${hm(s.sleepSecs)} (${pct(s.sleepSecs, s.awakeSecs)})`, CH.sleep)}
-      ${stat('Total awake duration', `${hm(s.awakeSecs)} (${pct(s.awakeSecs, s.sleepSecs)})`, '#4A63D9')}
-      ${stat('Total sleep periods', d.sleepParts.length, null, false)}
-      ${stat('Longest sleep period', hm(s.longestSleep), null, false)}
-      ${stat('Total awake periods', d.awakeParts.length, null, false)}
-      ${stat('Longest awake period', d.awakeParts.length ? hm(s.longestAwake) : '–', null, false)}
-    </div>
-    ${legend([['Sleep', CH.sleep], ['Awake', CH.awake]])}
-    ${sleepChart(d.sleepParts, d.awakeParts, xAt)}
-    ${split(s.sleepSecs, s.awakeSecs, CH.sleep, CH.awake, end - start >= DAY_MS ? '24-hour sleep and awake distribution' : `Sleep and awake distribution (00:00–${hhmm(end)})`, ['Sleep', 'Awake'], [CH.sleep, '#4A63D9'])}
-  </div>` : empty('No sleep recorded.');
-
-  const diaperBody = d.diapers.length ? `<div class="box">
-    <div class="stats">
-      ${stat('Total diaper changes', d.diapers.length)}
-      ${stat('Wet only', s.wet, CH.wet)}
-      ${stat('Stool only', s.stool, CH.stool)}
-      ${stat('Both wet and stool', s.both, CH.both)}
-    </div>
-    ${diaperChart(d.diapers, xAt)}
-    ${d.diaperColours.length ? `<div class="ckey"><span class="ckt">Colours logged:</span>${d.diaperColours.map((c) =>
-      `<span><i style="background:${c.swatch}"></i>${esc(c.kind)}: ${esc(c.label)}${c.warn ? ' <b class="warn">(tell the doctor)</b>' : ''}</span>`).join('')}</div>` : ''}
-    <div class="stats rule">
-      ${stat('Total diapers containing urine', s.wet + s.both)}
-      ${stat('Total diapers containing stool', s.stool + s.both)}
-      ${s.dry ? stat('Checked and dry', s.dry) : ''}
-    </div>
-  </div>` : empty('No diaper changes recorded.');
-
-  const otherBody = others.length ? `<table class="list">
-    <tr><th>Check</th><th>Result</th><th>Time</th></tr>
-    ${others.map((e) => `<tr><td>${esc(e.label)}</td><td>${esc(e.value)}</td><td>${format(e.at, 'hh:mm a')}</td></tr>`).join('')}
-  </table>` : '';
-
-  const birth = parseDob(baby?.dob);
-  const ageDays = birth ? Math.max(0, Math.floor((start - birth.getTime()) / DAY_MS)) : null;
-  const off = -new Date(start).getTimezoneOffset();
-  const tz = off === 330 ? 'IST'
-    : `GMT${off >= 0 ? '+' : '-'}${Math.floor(Math.abs(off) / 60)}${Math.abs(off) % 60 ? `:${String(Math.abs(off) % 60).padStart(2, '0')}` : ''}`;
-  const periodEnd = end >= start + DAY_MS ? '24:00' : hhmm(end);
-
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
+/** Shared page style of the daily and monthly reports (light, formal, brand colours). */
+export const REPORT_CSS = `
     @page { size: A4; margin: 14mm 12mm; }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body { margin: 0; color: ${INK}; background: #fff; font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 11px; }
@@ -405,13 +399,14 @@ export function dailyReportHtml({ baby, day, now, feeds, sleeps, diapers, medici
     svg .ax { fill: ${MUTED}; font-size: 15px; }
     svg .axt { fill: ${INK}; font-size: 16px; }
     svg .lane { fill: ${INK}; font-size: 17px; }
-    svg .val { fill: ${INK}; font-size: 15px; font-weight: 600; }
+    svg .val { fill: ${INK}; font-size: 12px; font-weight: 600; }
     .cap { color: ${MUTED}; margin: 8px 0 5px; }
     .splitlab { display: flex; justify-content: space-between; color: ${MUTED}; font-size: 11px; margin-top: 6px; }
     .ckey { color: ${MUTED}; font-size: 10.5px; margin-top: 4px; }
     .ckey span { display: inline-block; margin: 2px 12px 2px 0; }
-    .ckey .ckt { color: ${INK}; font-weight: 700; }
-    .ckey i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1px solid #8C92AE; margin-right: 5px; vertical-align: -1px; }
+    .ckey.shapes { text-align: center; font-size: 12px; color: ${INK}; margin-top: 8px; }
+    .ckey.shapes span { margin: 2px 10px; }
+    .ckey.shapes svg { display: inline-block; width: 16px; height: 16px; margin: 0 6px 0 0; vertical-align: -3px; }
     .split { display: flex; height: 10px; border-radius: 5px; overflow: hidden; }
     table { width: 100%; border-collapse: collapse; }
     thead { display: table-header-group; }
@@ -431,7 +426,109 @@ export function dailyReportHtml({ baby, day, now, feeds, sleeps, diapers, medici
     .warn { color: #C77700; }
     .empty { color: ${MUTED}; margin: 0; font-style: italic; }
     footer { margin-top: 24px; padding-top: 8px; border-top: 1px solid ${LINE}; color: ${MUTED}; font-size: 9.5px; }
-  </style></head><body>
+`;
+
+/**
+ * The daily report (one day) as HTML for expo-print.
+ * others: recentActivity entries for other checks of the day ({ at, label, value })
+ */
+export function dailyReportHtml({ baby, day, now, feeds, sleeps, diapers, medicines, vaccines, others = [] }) {
+  const d = buildDailyData({ day, now, feeds, sleeps, diapers, medicines, vaccines });
+  const { start, end, s } = d;
+  const xAt = (ms) => L + (Math.min(Math.max(ms - start, 0), DAY_MS) / DAY_MS) * (R - L);
+
+  const DASH = '<span class="dash">–</span>';
+  const TICK = '<span class="tick">✓</span>';
+  const cell = (v) => (v === true ? TICK : v === undefined || v === null || v === '' ? DASH : esc(v));
+  const table = d.rows.length ? `<table class="mon">
+    <thead>
+      <tr><th rowspan="2" class="tl">Time</th><th colspan="3">Breastfeeding (min)</th><th colspan="2">Bottle feeding</th>
+        <th colspan="2">Sleep cycle</th><th colspan="4">Diapers</th></tr>
+      <tr class="sub"><th>LB</th><th>RB</th><th>Total</th><th>Min</th><th>mL</th><th>Sleep</th><th>Awake</th>
+        <th>Wet</th><th>Stool</th><th>Both</th><th>Dry</th></tr>
+    </thead>
+    <tbody>
+      ${d.rows.map((r) => `<tr><td class="tl">${hhmm(r.at)}</td>${Array.from({ length: 11 }, (_, i) => `<td>${cell(r.cells[i])}</td>`).join('')}</tr>`).join('')}
+      <tr class="tot"><td class="tl">Total</td>${d.totals.map((v) => `<td>${esc(v)}</td>`).join('')}</tr>
+    </tbody>
+  </table>` : empty('Nothing was recorded on this day.');
+
+  const medBody = d.meds.length ? `<table class="list">
+    <tr><th>Medicine / Supplement name</th><th>Dose</th><th>Time administered</th></tr>
+    ${d.meds.map((m) => `<tr><td>${esc(m.name)}${m.skipped ? ' <span class="warn">(skipped)</span>' : ''}</td>
+      <td>${esc(m.dose)}</td><td>${format(m.at, 'hh:mm a')}</td></tr>`).join('')}
+  </table>` : empty('No medicines or supplements recorded.');
+
+  const vaccBody = d.vacc.length ? `<table class="list">
+    <tr><th>Vaccine name</th><th>Time administered</th></tr>
+    ${d.vacc.map((v) => `<tr><td>${esc(v.name)}</td><td>${format(v.at, 'hh:mm a')}</td></tr>`).join('')}
+  </table>` : empty('No vaccines given on this day.');
+
+  const breastBody = d.breast.length ? `<div class="box">
+    <div class="stats">
+      ${stat('Total breastfeeding sessions', d.breast.length)}
+      ${stat('Total breastfeeding duration', hm((s.breastLeft + s.breastRight) * 60))}
+      ${stat('Left breast', `${s.breastLeft} min (${pct(s.breastLeft, s.breastRight)})`, CH.leftText)}
+      ${stat('Right breast', `${s.breastRight} min (${pct(s.breastRight, s.breastLeft)})`, CH.rightText)}
+    </div>
+    ${legend([['Left breast', CH.left], ['Right breast', CH.right]])}
+    ${breastChart(d.breast, start)}
+    ${split(s.breastLeft, s.breastRight, CH.left, CH.right, null, ['Left breast', 'Right breast'], [CH.leftText, CH.rightText])}
+  </div>` : empty('No breastfeeds recorded.');
+
+  const bottleBody = d.bottle.length ? `<div class="box">
+    <div class="stats">
+      ${stat('Total feeds', d.bottle.length)}
+      ${stat('Total milk consumed', `${s.bottleMl} mL`, CH.bottleText)}
+      ${stat('Total feeding duration', `${s.bottleMin} minutes`, null, false)}
+      ${stat('Average milk per feed', `${Math.round(s.bottleMl / d.bottle.length)} mL`, null, false)}
+    </div>
+    ${bottleChart(d.bottle, start)}
+  </div>` : empty('No bottle feeds recorded.');
+
+  const sleepBody = d.sleepParts.length ? `<div class="box">
+    <div class="stats">
+      ${stat('Total sleep duration', `${hm(s.sleepSecs)} (${pct(s.sleepSecs, s.awakeSecs)})`, CH.sleepText)}
+      ${stat('Total awake duration', `${hm(s.awakeSecs)} (${pct(s.awakeSecs, s.sleepSecs)})`, CH.awakeText)}
+      ${stat('Total sleep periods', d.sleepParts.length, null, false)}
+      ${stat('Longest sleep period', hm(s.longestSleep), null, false)}
+      ${stat('Total awake periods', d.awakeParts.length, null, false)}
+      ${stat('Longest awake period', d.awakeParts.length ? hm(s.longestAwake) : '–', null, false)}
+    </div>
+    ${legend([['Sleep', CH.sleep], ['Awake', CH.awake]])}
+    ${sleepChart(d.sleepParts, d.awakeParts, xAt)}
+    ${split(s.sleepSecs, s.awakeSecs, CH.sleep, CH.awake, end - start >= DAY_MS ? '24-hour sleep and awake distribution' : `Sleep and awake distribution (00:00–${hhmm(end)})`, ['Sleep', 'Awake'], [CH.sleepText, CH.awakeText])}
+  </div>` : empty('No sleep recorded.');
+
+  const diaperBody = d.diapers.length ? `<div class="box">
+    <div class="stats">
+      ${stat('Total diaper changes', d.diapers.length)}
+      ${stat('Wet only', s.wet, CH.wetText)}
+      ${stat('Stool only', s.stool, CH.stool)}
+      ${stat('Both wet and stool', s.both, CH.both)}
+      ${stat('Dry', s.dry, CH.dryText)}
+    </div>
+    ${diaperChart(d.diapers, xAt)}
+    ${shapeKey()}
+    <div class="stats rule">
+      ${stat('Total diapers containing urine', s.wet + s.both)}
+      ${stat('Total diapers containing stool', s.stool + s.both)}
+    </div>
+  </div>` : empty('No diaper changes recorded.');
+
+  const otherBody = others.length ? `<table class="list">
+    <tr><th>Check</th><th>Result</th><th>Time</th></tr>
+    ${others.map((e) => `<tr><td>${esc(e.label)}</td><td>${esc(e.value)}</td><td>${format(e.at, 'hh:mm a')}</td></tr>`).join('')}
+  </table>` : '';
+
+  const birth = parseDob(baby?.dob);
+  const ageDays = birth ? Math.max(0, Math.floor((start - birth.getTime()) / DAY_MS)) : null;
+  const off = -new Date(start).getTimezoneOffset();
+  const tz = off === 330 ? 'IST'
+    : `GMT${off >= 0 ? '+' : '-'}${Math.floor(Math.abs(off) / 60)}${Math.abs(off) % 60 ? `:${String(Math.abs(off) % 60).padStart(2, '0')}` : ''}`;
+  const periodEnd = end >= start + DAY_MS ? '24:00' : hhmm(end);
+
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(reportName(baby, format(start, 'd MMM yyyy')))}</title><style>${REPORT_CSS}</style></head><body>
     <div class="top">
       <div><div class="brand">Cradlewell</div><h1>Daily monitoring report</h1></div>
       <div class="gen">Generated ${format(new Date(), 'd MMM yyyy, HH:mm')}</div>

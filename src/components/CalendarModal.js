@@ -11,10 +11,10 @@ import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/th
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-/** Month calendar in a bottom sheet. Future days can't be picked. */
-export default function CalendarModal({ visible, value, onSelect, onClose, C, title }) {
-  const [month, setMonth] = useState(startOfMonth(value));
-  useEffect(() => { if (visible) setMonth(startOfMonth(value)); }, [visible, value]);
+/** A month of days with month navigation. Future days can't be picked. onSelect(startOfDay). */
+export function DayGrid({ value, onSelect, C }) {
+  const [month, setMonth] = useState(startOfMonth(value || new Date()));
+  useEffect(() => { setMonth(startOfMonth(value || new Date())); }, [value]);
 
   const today = startOfDay(new Date());
   const canGoNext = !isAfter(addMonths(month, 1), today);
@@ -24,70 +24,80 @@ export default function CalendarModal({ visible, value, onSelect, onClose, C, ti
   for (let d = startOfWeek(month, { weekStartsOn: 1 }); !isAfter(d, last); d = addDays(d, 1)) days.push(d);
 
   return (
+    <View>
+      <View style={styles.monthRow}>
+        <TouchableOpacity
+          onPress={() => setMonth(addMonths(month, -1))}
+          style={[styles.navBtn, { backgroundColor: C.primaryLight }]}
+          accessibilityRole="button"
+          accessibilityLabel="Previous month"
+        >
+          <Ionicons name="chevron-back" size={20} color={C.primary} />
+        </TouchableOpacity>
+        <Text style={[styles.monthText, { color: C.text }]}>{format(month, 'MMMM yyyy')}</Text>
+        <TouchableOpacity
+          onPress={() => canGoNext && setMonth(addMonths(month, 1))}
+          disabled={!canGoNext}
+          style={[styles.navBtn, { backgroundColor: C.primaryLight, opacity: canGoNext ? 1 : 0.4 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Next month"
+        >
+          <Ionicons name="chevron-forward" size={20} color={C.primary} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.grid}>
+        {WEEKDAYS.map((w) => (
+          <Text key={w} style={[styles.weekday, { color: C.textSecondary }]}>{w}</Text>
+        ))}
+        {days.map((d) => {
+          const inMonth = isSameMonth(d, month);
+          const future = isAfter(d, today);
+          const selected = !!value && isSameDay(d, value);
+          const isToday = isSameDay(d, today);
+          return (
+            <View key={d.toISOString()} style={styles.cell}>
+              {inMonth ? (
+                <TouchableOpacity
+                  disabled={future}
+                  onPress={() => onSelect(startOfDay(d))}
+                  style={[
+                    styles.day,
+                    selected && { backgroundColor: C.primary },
+                    !selected && isToday && { borderWidth: 1.5, borderColor: C.primary },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={format(d, 'EEEE d MMMM')}
+                  accessibilityState={{ selected, disabled: future }}
+                >
+                  <Text
+                    style={[
+                      styles.dayText,
+                      { color: selected ? COLORS.white : future ? C.textMuted : C.text },
+                      future && { opacity: 0.5 },
+                    ]}
+                  >
+                    {format(d, 'd')}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+/** Month calendar in a sheet. Future days can't be picked. */
+export default function CalendarModal({ visible, value, onSelect, onClose, C, title }) {
+  const today = startOfDay(new Date());
+  return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close calendar">
         <Pressable style={[styles.sheet, { backgroundColor: C.card }, SHADOW.lg]}>
           {title ? <Text style={[styles.title, { color: C.textSecondary }]}>{title}</Text> : null}
-          <View style={styles.monthRow}>
-            <TouchableOpacity
-              onPress={() => setMonth(addMonths(month, -1))}
-              style={[styles.navBtn, { backgroundColor: C.primaryLight }]}
-              accessibilityRole="button"
-              accessibilityLabel="Previous month"
-            >
-              <Ionicons name="chevron-back" size={20} color={C.primary} />
-            </TouchableOpacity>
-            <Text style={[styles.monthText, { color: C.text }]}>{format(month, 'MMMM yyyy')}</Text>
-            <TouchableOpacity
-              onPress={() => canGoNext && setMonth(addMonths(month, 1))}
-              disabled={!canGoNext}
-              style={[styles.navBtn, { backgroundColor: C.primaryLight, opacity: canGoNext ? 1 : 0.4 }]}
-              accessibilityRole="button"
-              accessibilityLabel="Next month"
-            >
-              <Ionicons name="chevron-forward" size={20} color={C.primary} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.grid}>
-            {WEEKDAYS.map((w) => (
-              <Text key={w} style={[styles.weekday, { color: C.textSecondary }]}>{w}</Text>
-            ))}
-            {days.map((d) => {
-              const inMonth = isSameMonth(d, month);
-              const future = isAfter(d, today);
-              const selected = isSameDay(d, value);
-              const isToday = isSameDay(d, today);
-              return (
-                <View key={d.toISOString()} style={styles.cell}>
-                  {inMonth ? (
-                    <TouchableOpacity
-                      disabled={future}
-                      onPress={() => onSelect(startOfDay(d))}
-                      style={[
-                        styles.day,
-                        selected && { backgroundColor: C.primary },
-                        !selected && isToday && { borderWidth: 1.5, borderColor: C.primary },
-                      ]}
-                      accessibilityRole="button"
-                      accessibilityLabel={format(d, 'EEEE d MMMM')}
-                      accessibilityState={{ selected, disabled: future }}
-                    >
-                      <Text
-                        style={[
-                          styles.dayText,
-                          { color: selected ? COLORS.white : future ? C.textMuted : C.text },
-                          future && { opacity: 0.5 },
-                        ]}
-                      >
-                        {format(d, 'd')}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-              );
-            })}
-          </View>
+          {visible ? <DayGrid value={value} onSelect={onSelect} C={C} /> : null}
 
           <View style={styles.footer}>
             <TouchableOpacity

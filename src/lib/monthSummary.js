@@ -1,5 +1,5 @@
 import { addDays, differenceInCalendarDays, isSameDay, startOfDay } from 'date-fns';
-import { DIAPER_TYPES, URINE_COLORS, STOOL_COLORS, findColor } from '../store/useDiaperStore';
+import { DIAPER_TYPES, STOOL_COLORS, findColor, urineColourOf } from '../store/useDiaperStore';
 import { temperatureStatus, breathingStatus, skinStatus, JAUNDICE_LEVELS } from '../store/useHealthStores';
 import { toMl, toKg, parseDob } from '../utils/formatters';
 
@@ -67,7 +67,7 @@ export function monthSummary({
     const d = touch(l.eventTime || l.createdAt);
     d.diapers += 1;
     if (DIAPER_TYPES[l.eventType]?.wet) d.wet += 1;
-    for (const c of [findColor(URINE_COLORS, l.urineColor), findColor(STOOL_COLORS, l.stoolColor)]) {
+    for (const c of [urineColourOf(l), findColor(STOOL_COLORS, l.stoolColor)]) {
       if (c?.warn) colourWarnings[c.label] = (colourWarnings[c.label] || 0) + 1;
     }
   });

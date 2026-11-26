@@ -2,10 +2,12 @@ import crypto from 'node:crypto';
 import { authDb, withTransaction } from './db.js';
 import { config } from './config.js';
 import { sendSms } from './sms.js';
+import { sendEmail } from './email.js';
 import { badRequest, tooMany } from './errors.js';
 
-// Codes are never stored: only an HMAC keyed with OTP_SECRET, bound to purpose and phone,
-// so a leaked database row cannot be brute-forced offline or replayed elsewhere.
+// Codes are never stored: only an HMAC keyed with OTP_SECRET, bound to purpose and to where
+// the code was sent (phone or email), so a leaked database row cannot be brute-forced offline
+// or replayed elsewhere.
 function hashCode(purpose, phone, code) {
   return crypto.createHmac('sha256', config.otpSecret).update(`${purpose}:${phone}:${code}`).digest('hex');
 }
@@ -21,16 +23,33 @@ const MESSAGES = {
   client_access: (code) => `Cradlewell Bloom: ${code} is the code to give your caregiver access to your baby's records. It expires in 5 minutes. Only share it if you asked for this.`,
 };
 
+// Codes sent by email (password reset).
+const EMAILS = {
+  password_reset: (code) => ({
+    subject: `${code} is your Cradlewell Bloom password reset code`,
+    text: `Your Cradlewell Bloom password reset code is ${code}.\n\nIt expires in 5 minutes. Enter it in the app to choose a new password.\n\nIf you did not ask to reset your password, you can ignore this email: your password stays the same.\n\nCradlewell Bloom · care@cradlewell.com`,
+    html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;color:#1B1F2E">
+  <h2 style="color:#5B4BB7;margin:0 0 12px">Reset your password</h2>
+  <p>Use this code in the Cradlewell Bloom app to choose a new password:</p>
+  <p style="font-size:32px;font-weight:bold;letter-spacing:8px;margin:16px 0;color:#1B1F2E">${code}</p>
+  <p>It expires in 5 minutes.</p>
+  <p style="color:#5A6690;font-size:13px">If you did not ask to reset your password, you can ignore this email: your password stays the same.</p>
+  <p style="color:#5A6690;font-size:13px">Cradlewell Bloom · care@cradlewell.com</p>
+</div>`,
+  }),
+};
+
 /**
  * Creates a new code, supersedes any earlier unused code for the same user and purpose,
- * and texts it to `phone`.
+ * and sends it: by email when `email` is given, otherwise by SMS to `phone`.
  */
-export async function issueOtp({ purpose, userId, clientId = null, phone }) {
+export async function issueOtp({ purpose, userId, clientId = null, phone, email }) {
+  const to = email || phone;
   const [recent] = await authDb.query(
     `SELECT TIMESTAMPDIFF(SECOND, created_at, UTC_TIMESTAMP()) AS age
        FROM otp_codes WHERE user_id = ? AND purpose = ? AND phone = ?
       ORDER BY id DESC LIMIT 1`,
-    [userId, purpose, phone]
+    [userId, purpose, to]
   );
   const cooldown = config.otpResendCooldownSeconds;
   if (recent.length && recent[0].age < cooldown) {
@@ -48,13 +67,14 @@ export async function issueOtp({ purpose, userId, clientId = null, phone }) {
     const [res] = await conn.query(
       `INSERT INTO otp_codes (purpose, user_id, client_id, phone, code_hash, expires_at)
        VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP() + INTERVAL ? SECOND)`,
-      [purpose, userId, clientId, phone, hashCode(purpose, phone, code), config.otpTtlSeconds]
+      [purpose, userId, clientId, to, hashCode(purpose, to, code), config.otpTtlSeconds]
     );
     return res.insertId;
   });
 
   try {
-    await sendSms(phone, MESSAGES[purpose](code));
+    if (email) await sendEmail(email, EMAILS[purpose](code));
+    else await sendSms(phone, MESSAGES[purpose](code));
   } catch (err) {
     await authDb.query('UPDATE otp_codes SET consumed_at = UTC_TIMESTAMP() WHERE id = ?', [otpId]);
     throw err;
@@ -66,7 +86,8 @@ export async function issueOtp({ purpose, userId, clientId = null, phone }) {
  * Checks a code. On success the code is consumed (single use) and its row returned.
  * Wrong codes count against a limit; expired, used, or locked codes are rejected.
  */
-export async function verifyOtp({ purpose, userId, phone, code }) {
+export async function verifyOtp({ purpose, userId, phone, email, code }) {
+  const to = email || phone;
   const outcome = await withTransaction(authDb, async (conn) => {
     const [rows] = await conn.query(
       `SELECT id, client_id, code_hash, attempts, (expires_at <= UTC_TIMESTAMP()) AS expired
@@ -74,7 +95,7 @@ export async function verifyOtp({ purpose, userId, phone, code }) {
         WHERE user_id = ? AND purpose = ? AND phone = ? AND consumed_at IS NULL
         ORDER BY id DESC LIMIT 1
         FOR UPDATE`,
-      [userId, purpose, phone]
+      [userId, purpose, to]
     );
     const otp = rows[0];
     if (!otp) return { error: 'otp_not_found' };
@@ -84,7 +105,7 @@ export async function verifyOtp({ purpose, userId, phone, code }) {
       return { error: 'otp_expired' };
     }
 
-    if (!sameHash(otp.code_hash, hashCode(purpose, phone, code))) {
+    if (!sameHash(otp.code_hash, hashCode(purpose, to, code))) {
       const attempts = otp.attempts + 1;
       const locked = attempts >= config.otpMaxAttempts;
       await conn.query(

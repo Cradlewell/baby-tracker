@@ -19,35 +19,56 @@ import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW, fs } from '../constant
 import GradientView from '../components/GradientView';
 import { useAuthStore } from '../store/useAuthStore';
 import { openSwitchClient } from '../lib/switchClientFlow';
-import { useHealthCheck } from '../lib/useHealthCheck';
-import { AlertCard } from './HealthAlertsScreen';
 import { useNotifications } from '../lib/notifications';
 import { recentActivity } from '../lib/recentActivity';
 import {
   useTemperatureStore, useBreathingStore, useSkinStore, useMilestoneStore,
 } from '../store/useHealthStores';
 import {
-  formatRelative, formatDuration, calcAge, startOfToday, formatWeight,
+  formatRelative, formatDuration, startOfToday, formatWeight, parseDob,
 } from '../utils/formatters';
 
-function StatCard({ icon, title, sub, alert, onPress, C }) {
+// "Add baby" pill: blue outline, matching the bottle-chart blue.
+const ADD_BLUE = '#4A8FD6';
+const ADD_BLUE_TEXT = '#2C6CB0';
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+function ageInWords(dob) {
+  const birth = parseDob(dob);
+  if (!birth) return '';
+  const days = Math.floor((Date.now() - birth.getTime()) / 86400000);
+  if (days < 0) return '';
+  if (days === 0) return 'Newborn';
+  if (days < 7) return `${plural(days, 'day')} old`;
+  if (days < 30) {
+    const w = Math.floor(days / 7);
+    const d = days % 7;
+    return `${plural(w, 'week')}${d ? `, ${plural(d, 'day')}` : ''} old`;
+  }
+  const months = Math.floor(days / 30.44);
+  if (months < 12) {
+    const d = Math.round(days - months * 30.44);
+    return `${plural(months, 'month')}${d ? `, ${plural(d, 'day')}` : ''} old`;
+  }
+  const y = Math.floor(months / 12);
+  const m = months % 12;
+  return `${plural(y, 'year')}${m ? `, ${plural(m, 'month')}` : ''} old`;
+}
+
+// One figure in "Today at a Glance": pastel icon, value, label. Information only (no tap).
+const GLANCE_TINTS = {
+  feed: '#9B87E0', sleep: '#7E8CE0', diaper: '#40BBC9', medicine: '#55BFA3', growth: '#4A8FD6', vaccine: '#E0A040',
+};
+
+function GlanceItem({ icon, mci, tint, value, label, C }) {
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.8}
-      style={[styles.statCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}
-      accessibilityRole="button"
-      accessibilityLabel={`${title}: ${sub}`}
-    >
-      <View style={[styles.statIcon, { backgroundColor: C.primaryLight }]}>
-        <Ionicons name={icon} size={22} color={C.primary} />
-      </View>
-      <Text style={[styles.statTitle, { color: C.text }]} numberOfLines={1}>{title}</Text>
-      <View style={styles.statFoot}>
-        <Text style={[styles.statSub, { color: alert ? COLORS.error : C.textSecondary }]} numberOfLines={2}>{sub}</Text>
-        <Ionicons name="chevron-forward" size={16} color={C.textSecondary} />
-      </View>
-    </TouchableOpacity>
+    <View style={styles.glanceItem} accessible accessibilityLabel={`${label}: ${value}`}>
+      {mci
+        ? <MaterialCommunityIcons name={mci} size={24} color={tint} />
+        : <Ionicons name={icon} size={24} color={tint} />}
+      <Text style={[styles.glanceValue, { color: C.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{value}</Text>
+      <Text style={[styles.glanceLabel, { color: C.textSecondary }]} numberOfLines={1}>{label}</Text>
+    </View>
   );
 }
 
@@ -103,8 +124,9 @@ export default function HomeScreen({ navigation }) {
     return () => clearInterval(id);
   }, []);
 
-  const feedSession = useFeedingStore((s) => s.session);
-  const sleepSession = useSleepStore((s) => s.session);
+  // Each baby has their own running timers (twins can feed / sleep at the same time).
+  const feedSession = useFeedingStore((s) => s.sessions[babyId]);
+  const sleepSession = useSleepStore((s) => s.sessions[babyId]);
 
   const todayFeeds = React.useMemo(() => {
     const today = startOfToday();
@@ -119,8 +141,10 @@ export default function HomeScreen({ navigation }) {
   const medicine = React.useMemo(() => {
     const logs = rawMedLogs || [];
     const today = startOfToday();
+    const todays = logs.filter((l) => new Date(l.time || l.createdAt) >= today);
     return {
-      givenToday: logs.filter((l) => l.status === 'given' && new Date(l.time || l.createdAt) >= today).length,
+      givenToday: todays.filter((l) => l.status === 'given').length,
+      loggedToday: todays.length,
       last: logs[0] || null,
       next: upcomingDoses(logs)[0] || null,
     };
@@ -134,6 +158,8 @@ export default function HomeScreen({ navigation }) {
       .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
     return {
       overdue: pending.filter((v) => new Date(v.dueDate) < today).length,
+      // Due today or overdue.
+      due: pending.filter((v) => differenceInCalendarDays(new Date(v.dueDate), today) <= 0).length,
       next: pending.find((v) => new Date(v.dueDate) >= today) || null,
       done: (rawVaccines || []).filter((v) => v.completed).length,
       total: (rawVaccines || []).length,
@@ -171,7 +197,6 @@ export default function HomeScreen({ navigation }) {
   };
 
   const insets = useSafeAreaInsets();
-  const health = useHealthCheck();
   const notes = useNotifications();
 
   if (!baby) return null;
@@ -179,32 +204,15 @@ export default function HomeScreen({ navigation }) {
   const feedRunning = feedSession?.babyId === babyId;
   const sleepRunning = sleepSession?.babyId === babyId;
 
-  const nextDoseText = (() => {
-    if (!medicine.next) return null;
-    const mins = Math.round((new Date(medicine.next.nextDoseAt).getTime() - now) / 60000);
-    if (mins <= 0) return `${medicine.next.name} due now`;
-    const h = Math.floor(mins / 60);
-    return `${medicine.next.name} in ${h ? `${h}h ${mins % 60}m` : `${mins}m`}`;
-  })();
-
-  const vaccineSub = (() => {
-    if (vaccines.overdue) return `${vaccines.overdue} overdue`;
-    if (vaccines.next) {
-      const d = differenceInCalendarDays(new Date(vaccines.next.dueDate), new Date());
-      return d === 0 ? 'Due today' : d === 1 ? 'Due tomorrow' : `Next in ${d} days`;
-    }
-    return vaccines.total ? 'All done' : 'Add date of birth';
-  })();
-
   const liveText = feedRunning ? 'Feeding in progress' : sleepRunning ? 'Sleeping right now' : null;
-  const genderIcon = baby.gender === 'girl' ? 'female' : baby.gender === 'boy' ? 'male' : 'heart';
+  const genderWord = baby.gender === 'girl' ? 'Girl' : baby.gender === 'boy' ? 'Boy' : '';
 
-  // The four most recent care events from any feature, newest first.
+  // The five most recent care events from any feature, newest first.
   const timeline = recentActivity({
     babyId,
     feeds: rawFeedLogs, sleeps: rawSleepLogs, diapers: rawDiaperLogs, medicines: rawMedLogs,
     growth: rawGrowthLogs, vaccines: rawVaccines, temperatures: rawTemps, breathing: rawBreaths,
-    skin: rawSkin, milestones: rawMilestones, feedSession, sleepSession, limit: 4,
+    skin: rawSkin, milestones: rawMilestones, feedSession, sleepSession, limit: 5,
   });
 
   return (
@@ -268,19 +276,16 @@ export default function HomeScreen({ navigation }) {
         )}
 
         {/* Baby hero */}
-        <GradientView colors={GRADIENTS.brand} style={[styles.hero, SHADOW.md]}>
+        <View style={[styles.hero, { backgroundColor: COLORS.primary }, SHADOW.md]}>
           <View style={styles.heroTop}>
-            <View style={styles.heroAvatarRing}>
-              <View style={styles.heroAvatar}>
-                <Text style={styles.heroAvatarText}>{baby.name?.[0]?.toUpperCase() || 'B'}</Text>
-              </View>
+            <View style={styles.heroAvatar}>
+              <Text style={styles.heroAvatarText}>{baby.name?.[0]?.toUpperCase() || 'B'}</Text>
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.heroName} numberOfLines={1}>{baby.name}</Text>
-              <View style={styles.heroAgeRow}>
-                <Ionicons name={genderIcon} size={18} color={COLORS.white} />
-                <Text style={styles.heroAge}>{calcAge(baby.dob)}</Text>
-              </View>
+              <Text style={styles.heroAge} numberOfLines={1}>
+                {[ageInWords(baby.dob), genderWord].filter(Boolean).join(' · ')}
+              </Text>
             </View>
           </View>
 
@@ -290,9 +295,9 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.liveText}>{liveText}</Text>
             </View>
           ) : null}
-        </GradientView>
+        </View>
 
-        {/* Baby Switcher */}
+        {/* Baby Switcher: name pills, then a + to add a baby */}
         <FlatList
           horizontal
           data={[...babies, { id: '__add__' }]}
@@ -305,12 +310,18 @@ export default function HomeScreen({ navigation }) {
               return (
                 <TouchableOpacity
                   onPress={() => navigation.navigate('Onboarding')}
-                  style={[styles.switcherPill, styles.switcherAdd, { borderColor: C.primary + '66' }]}
+                  activeOpacity={0.8}
+                  style={[
+                    styles.switcherPill, styles.switcherAdd,
+                    { borderColor: ADD_BLUE, backgroundColor: darkMode ? ADD_BLUE + '1F' : '#EEF5FD' },
+                  ]}
                   accessibilityRole="button"
                   accessibilityLabel="Add new baby"
                 >
-                  <Ionicons name="add" size={18} color={C.primary} />
-                  <Text style={[styles.switcherName, { color: C.primary }]}>Add baby</Text>
+                  <View style={[styles.switcherAddIcon, { backgroundColor: ADD_BLUE }]}>
+                    <Ionicons name="add" size={16} color={COLORS.white} />
+                  </View>
+                  <Text style={[styles.switcherName, { color: darkMode ? '#8FBCF0' : ADD_BLUE_TEXT, fontWeight: FONT_WEIGHT.bold }]}>Add baby</Text>
                 </TouchableOpacity>
               );
             }
@@ -327,15 +338,7 @@ export default function HomeScreen({ navigation }) {
                 accessibilityLabel={`Switch to ${b.name}`}
                 accessibilityState={{ selected: isActive }}
               >
-                <View style={[
-                  styles.switcherAvatar,
-                  { backgroundColor: isActive ? C.primary : C.primaryLight },
-                ]}>
-                  <Text style={[styles.switcherInitial, { color: isActive ? COLORS.white : C.primary }]}>
-                    {b.name?.[0]?.toUpperCase()}
-                  </Text>
-                </View>
-                <Text style={[styles.switcherName, { color: isActive ? C.primary : C.text }]}>
+                <Text style={[styles.switcherName, { color: isActive ? C.primary : C.text }]} numberOfLines={1}>
                   {b.name}
                 </Text>
               </TouchableOpacity>
@@ -361,79 +364,22 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.sectionHead}>
           <Text style={[styles.sectionTitle, { color: C.text }]}>Today at a Glance</Text>
         </View>
-        <View style={styles.statsGrid}>
-          <StatCard
-            icon="nutrition-outline"
-            C={C}
-            title="Feeding"
-            sub={feedRunning ? 'Feeding now' : `${todayFeeds.length} feed${todayFeeds.length === 1 ? '' : 's'} today`}
-            onPress={() => navigation.navigate('Feeding')}
-          />
-          <StatCard
-            icon="moon-outline"
-            C={C}
-            title="Sleep"
-            sub={sleepRunning ? 'Sleeping now' : `${todaySleepSecs > 0 ? formatDuration(todaySleepSecs) : '0m'} today`}
-            onPress={() => navigation.navigate('Sleep')}
-          />
-          <StatCard
-            icon="water-outline"
-            C={C}
-            title="Diapers"
-            sub={`${todayDiapers.length} change${todayDiapers.length === 1 ? '' : 's'} today`}
-            onPress={() => navigation.navigate('Diaper')}
-          />
-          <StatCard
-            icon="medkit-outline"
-            C={C}
-            title="Medicine"
-            sub={nextDoseText || `${medicine.givenToday} dose${medicine.givenToday === 1 ? '' : 's'} today`}
-            onPress={() => navigation.navigate('Medicine')}
-          />
-          <StatCard
-            icon="bar-chart-outline"
-            C={C}
-            title="Growth"
-            sub={latestWeight ? formatWeight(latestWeight.weight, latestWeight.unit) : 'Add weight'}
-            onPress={() => navigation.navigate('Growth')}
-          />
-          <StatCard
-            icon="shield-checkmark-outline"
-            C={C}
-            title="Vaccines"
-            alert={vaccines.overdue > 0}
-            sub={vaccineSub}
-            onPress={() => navigation.navigate('Vaccination')}
-          />
+        <View style={[styles.glanceGrid, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
+          <GlanceItem C={C} mci="baby-bottle-outline" tint={GLANCE_TINTS.feed} label="Feeding"
+            value={`${todayFeeds.length} feed${todayFeeds.length === 1 ? '' : 's'}`} />
+          <GlanceItem C={C} icon="moon-outline" tint={GLANCE_TINTS.sleep} label="Sleep"
+            value={todaySleepSecs > 0 ? formatDuration(todaySleepSecs) : '0m'} />
+          <GlanceItem C={C} icon="water-outline" tint={GLANCE_TINTS.diaper} label="Diapers"
+            value={`${todayDiapers.length} change${todayDiapers.length === 1 ? '' : 's'}`} />
+          <GlanceItem C={C} mci="pill" tint={GLANCE_TINTS.medicine} label="Medicine"
+            value={medicine.loggedToday > medicine.givenToday
+              ? `${medicine.givenToday} of ${medicine.loggedToday}`
+              : `${medicine.givenToday} given`} />
+          <GlanceItem C={C} icon="trending-up" tint={GLANCE_TINTS.growth} label="Growth"
+            value={latestWeight ? formatWeight(latestWeight.weight, latestWeight.unit) : '—'} />
+          <GlanceItem C={C} icon="shield-checkmark-outline" tint={GLANCE_TINTS.vaccine} label="Vaccines"
+            value={vaccines.due ? `${vaccines.due} due` : vaccines.total ? (vaccines.next ? 'Up to date' : 'All done') : '—'} />
         </View>
-
-        {/* Health alerts */}
-        <View style={styles.sectionHead}>
-          <Text style={[styles.sectionTitle, { color: C.text }]}>Health Alerts</Text>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('HealthAlerts')}
-            style={styles.viewAll}
-            accessibilityRole="button"
-            accessibilityLabel="View all health alerts"
-          >
-            <Text style={[styles.viewAllText, { color: C.primary }]}>View All</Text>
-            <Ionicons name="chevron-forward" size={16} color={C.primary} />
-          </TouchableOpacity>
-        </View>
-        {health.alerts.length ? (
-          health.alerts.slice(0, 2).map((a) => (
-            <AlertCard key={a.id} alert={a} onPress={() => navigation.navigate(a.route)} />
-          ))
-        ) : (
-          <View style={[styles.noAlerts, { backgroundColor: C.card, borderColor: C.border }]}>
-            {health.status === 'unknown'
-              ? <Ionicons name="information-circle-outline" size={22} color={C.textSecondary} />
-              : <Ionicons name="checkmark-circle-outline" size={22} color={COLORS.success} />}
-            <Text style={[styles.noAlertsText, { color: C.textSecondary }]}>
-              {health.status === 'unknown' ? 'Alerts appear here once care is logged.' : 'No alerts today.'}
-            </Text>
-          </View>
-        )}
 
         {/* Recent activity timeline */}
         <View style={styles.sectionHead}>
@@ -467,24 +413,6 @@ export default function HomeScreen({ navigation }) {
           ))}
         </View>
 
-        {/* Summary CTA */}
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Summary')}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel="View daily summary"
-        >
-          <View style={[styles.summaryBtn, { backgroundColor: C.primary }, SHADOW.md]}>
-            <View style={styles.summaryIcon}>
-              <Ionicons name="sparkles" size={20} color={COLORS.white} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.summaryTitle}>Daily summary</Text>
-              <Text style={styles.summarySub} numberOfLines={1}>See {baby.name}'s whole day in one place</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={COLORS.white} />
-          </View>
-        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -515,16 +443,13 @@ const styles = StyleSheet.create({
 
   hero: { borderRadius: RADIUS.xxl, padding: SPACING.lg, marginBottom: SPACING.md },
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  heroAvatarRing: { padding: 4, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.25)' },
   heroAvatar: {
-    width: 60, height: 60, borderRadius: 30, backgroundColor: COLORS.white,
+    width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.white,
     alignItems: 'center', justifyContent: 'center',
   },
   heroAvatarText: { color: COLORS.primary, fontSize: fs(26), fontWeight: FONT_WEIGHT.heavy },
-  heroName: { color: COLORS.white, fontSize: fs(26), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.6 },
-  heroAgeRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
-  // 19px bold counts as large text, so white passes 3:1 on the lighter end of the gradient.
-  heroAge: { color: COLORS.white, fontSize: fs(19), fontWeight: FONT_WEIGHT.bold },
+  heroName: { color: COLORS.white, fontSize: fs(24), fontWeight: FONT_WEIGHT.heavy, letterSpacing: -0.5 },
+  heroAge: { color: COLORS.white, fontSize: fs(16), fontWeight: FONT_WEIGHT.medium, marginTop: 4 },
   livePill: {
     flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start',
     marginTop: SPACING.md, paddingHorizontal: 12, paddingVertical: 6,
@@ -534,16 +459,14 @@ const styles = StyleSheet.create({
   liveText: { color: COLORS.primary, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
 
   switcherList: { marginBottom: SPACING.xs, flexGrow: 0 },
-  switcherContent: { gap: SPACING.sm, paddingRight: SPACING.sm, paddingVertical: 4 },
+  switcherContent: { gap: SPACING.sm, paddingRight: SPACING.sm, paddingVertical: 4, alignItems: 'center' },
   switcherPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingVertical: 6, paddingLeft: 6, paddingRight: 14, borderRadius: RADIUS.full,
-    borderWidth: 1.5,
+    minWidth: 104, minHeight: 44, paddingHorizontal: 18, borderRadius: RADIUS.full, borderWidth: 1.5,
+    alignItems: 'center', justifyContent: 'center',
   },
-  switcherAdd: { paddingLeft: 12, borderStyle: 'dashed', backgroundColor: 'transparent' },
-  switcherAvatar: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  switcherInitial: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
-  switcherName: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
+  switcherAdd: { flexDirection: 'row', gap: 8, paddingLeft: 8, paddingRight: 16 },
+  switcherAddIcon: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  switcherName: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold },
 
   sectionHead: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -564,26 +487,18 @@ const styles = StyleSheet.create({
   },
   quickLabel: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.bold },
 
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 },
-  statCard: {
-    width: '31.8%', minHeight: 132, padding: 12, borderRadius: RADIUS.lg, borderWidth: 1,
+  glanceGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', rowGap: SPACING.lg,
+    paddingVertical: SPACING.lg, paddingHorizontal: 4, borderRadius: RADIUS.xl, borderWidth: 1,
   },
-  statIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  statTitle: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.heavy },
-  statFoot: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, marginTop: 4, flex: 1 },
-  statSub: { flex: 1, fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium, lineHeight: 18 },
+  glanceItem: { width: '33.333%', alignItems: 'center', gap: 4, paddingHorizontal: 4 },
+  glanceValue: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, marginTop: 4 },
+  glanceLabel: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium },
   bellBadge: {
     position: 'absolute', top: 4, right: 4, minWidth: 20, height: 20, borderRadius: 10,
     paddingHorizontal: 4, borderWidth: 2, alignItems: 'center', justifyContent: 'center',
   },
   bellBadgeText: { color: COLORS.white, fontSize: fs(11), fontWeight: FONT_WEIGHT.heavy },
-  viewAll: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 44 },
-  viewAllText: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
-  noAlerts: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, padding: SPACING.md,
-    borderRadius: RADIUS.xl, borderWidth: 1,
-  },
-  noAlertsText: { fontSize: FONT_SIZE.md },
 
   timelineCard: {
     borderRadius: RADIUS.xl, borderWidth: 1,
@@ -600,14 +515,4 @@ const styles = StyleSheet.create({
   timelineEmpty: { fontSize: FONT_SIZE.md, paddingBottom: SPACING.md, lineHeight: 21 },
   timelineValue: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold },
 
-  summaryBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    padding: SPACING.md + 2, borderRadius: RADIUS.xl,
-  },
-  summaryIcon: {
-    width: 44, height: 44, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  summaryTitle: { color: COLORS.white, fontSize: FONT_SIZE.base, fontWeight: FONT_WEIGHT.heavy },
-  summarySub: { color: COLORS.white, fontSize: FONT_SIZE.sm, marginTop: 2 },
 });

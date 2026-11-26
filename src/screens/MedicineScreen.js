@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 
 import { useBabyStore } from '../store/useBabyStore';
 import { useMedicineStore, upcomingDoses } from '../store/useMedicineStore';
-import { setReminders, cancelReminder, medicineReminderKey } from '../lib/reminders';
+import { setReminders, cancelReminder, medicineReminderKey, remindersAllowed } from '../lib/reminders';
 import { COLORS } from '../constants/colors';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, fs } from '../constants/theme';
 import { formatRelative, formatTime } from '../utils/formatters';
@@ -72,7 +72,12 @@ export default function MedicineScreen({ navigation }) {
         title: `Time for ${name.trim()}`,
         body: `${baby.name}'s next dose: ${what}`,
       }]);
-      if (!count) {
+      if (!count && !remindersAllowed(reminderKey)) {
+        Alert.alert(
+          'Medicine reminders are off',
+          'The countdown is shown here, but the phone will not ring. Turn on Medicine reminders in Settings to hear the sound.'
+        );
+      } else if (!count) {
         Alert.alert(
           'Reminder not set',
           'Allow notifications for Cradlewell Bloom in your phone settings to hear a sound when the next dose is due. The countdown is still shown here.'

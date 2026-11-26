@@ -207,7 +207,7 @@ export default function GrowthScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.screenHeader, styles.headerRow]}>
-          {navigation?.canGoBack() ? (
+          {navigation?.canGoBack() && navigation.getState?.()?.type !== 'tab' ? (
             <TouchableOpacity
               onPress={() => navigation.goBack()}
               style={[styles.headerBtn, { backgroundColor: S.tile }]}

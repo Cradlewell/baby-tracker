@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { format, addDays, isSameDay } from 'date-fns';
+import { format, addDays, isSameDay, isSameMonth, startOfMonth, differenceInCalendarDays } from 'date-fns';
 
 import { useBabyStore } from '../store/useBabyStore';
 import { useFeedingStore } from '../store/useFeedingStore';
@@ -19,10 +19,13 @@ import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
 import GradientView from '../components/GradientView';
 import { SummaryBlock, StatRow, SortedBlocks } from '../components/SummaryParts';
 import CalendarModal from '../components/CalendarModal';
+import MonthPickerModal from '../components/MonthPicker';
 import MonthSummary from '../components/MonthSummary';
 import DailyReport from '../components/DailyReport';
+import ExportButton from '../components/ExportButton';
 import { buildDailyData } from '../lib/dailyReport';
-import { monthSummary, RANGE_DAYS } from '../lib/monthSummary';
+import { buildMonthData, monthRange } from '../lib/monthReport';
+import { monthSummary } from '../lib/monthSummary';
 import { useGrowthStore } from '../store/useGrowthStore';
 import { useVaccinationStore } from '../store/useVaccinationStore';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW, TIGHT_TEXT, fs } from '../constants/theme';
@@ -41,18 +44,17 @@ export default function SummaryScreen({ navigation, route }) {
 
   // The day being summarised. Today by default, and again whenever the screen is reopened.
   const [day, setDay] = useState(startOfToday);
-  // 'day' shows one day; 'month' shows the 30 days ending on endDate (today by default).
+  // 'day' shows one day; 'month' shows a calendar month (this month by default).
   const [mode, setMode] = useState('day');
-  const [endDate, setEndDate] = useState(startOfToday);
+  const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [calendarOpen, setCalendarOpen] = useState(false);
   useEffect(() => navigation.addListener('focus', () => {
     setDay(startOfToday());
-    setEndDate(startOfToday());
+    setMonth(startOfMonth(new Date()));
   }), [navigation]);
   const isMonth = mode === 'month';
-  const shown = isMonth ? endDate : day;
-  const setShown = isMonth ? setEndDate : setDay;
-  const shownIsToday = isSameDay(shown, new Date());
+  const shownIsToday = isMonth ? isSameMonth(month, new Date()) : isSameDay(day, new Date());
+  const backToToday = () => (isMonth ? setMonth(startOfMonth(new Date())) : setDay(startOfToday()));
 
   useEffect(() => {
     if (babyId) {
@@ -78,11 +80,17 @@ export default function SummaryScreen({ navigation, route }) {
   const rawGrowthLogs = useGrowthStore((s) => s.logs[babyId]);
   const rawVaccines = useVaccinationStore((s) => s.records[babyId]);
 
+  // The month's report runs from its first day with records to today (this month) or to its
+  // last day with records (a past month).
+  const range = useMemo(() => (isMonth ? monthRange({
+    month, feeds: rawFeedLogs || [], sleeps: rawSleepLogs || [], diapers: rawDiaperLogs || [], medicines: rawMedLogs || [],
+  }) : null), [isMonth, month, rawFeedLogs, rawSleepLogs, rawDiaperLogs, rawMedLogs]);
+
   const monthData = useMemo(() => (isMonth ? monthSummary({
-    end: endDate, dob: baby?.dob,
+    end: range.endDay, rangeDays: differenceInCalendarDays(range.endDay, range.startDay) + 1, dob: baby?.dob,
     feeds: rawFeedLogs, sleeps: rawSleepLogs, diapers: rawDiaperLogs, medicines: rawMedLogs,
     temps: rawTempLogs, breaths: rawBreathLogs, skin: rawSkinLogs, growth: rawGrowthLogs, vaccines: rawVaccines,
-  }) : null), [isMonth, endDate, baby?.dob, rawFeedLogs, rawSleepLogs, rawDiaperLogs, rawMedLogs,
+  }) : null), [isMonth, range, baby?.dob, rawFeedLogs, rawSleepLogs, rawDiaperLogs, rawMedLogs,
     rawTempLogs, rawBreathLogs, rawSkinLogs, rawGrowthLogs, rawVaccines]);
 
   const viewingToday = isSameDay(day, new Date());
@@ -123,7 +131,7 @@ export default function SummaryScreen({ navigation, route }) {
   const totalSleepSecs = sleepLogs.reduce((s, l) => s + secondsWithinToday(l.startTime, l.endTime), 0);
 
   // Table and charts for the chosen day (a sleep still running counts up to now).
-  const sleepSession = useSleepStore((st) => st.session);
+  const sleepSession = useSleepStore((st) => st.sessions[babyId]);
   const dailyData = useMemo(() => {
     const running = sleepSession && sleepSession.babyId === babyId && sleepSession.startTime
       ? [{ startTime: sleepSession.startTime, endTime: sleepSession.endTime }] : [];
@@ -133,6 +141,18 @@ export default function SummaryScreen({ navigation, route }) {
       medicines: rawMedLogs || [], vaccines: rawVaccines || [],
     });
   }, [day, viewingToday, babyId, sleepSession, rawFeedLogs, rawSleepLogs, rawDiaperLogs, rawMedLogs, rawVaccines]);
+
+  // The monthly report: same sections, one row / bar per day.
+  const monthReport = useMemo(() => {
+    if (!isMonth) return null;
+    const running = sleepSession && sleepSession.babyId === babyId && sleepSession.startTime
+      ? [{ startTime: sleepSession.startTime, endTime: sleepSession.endTime }] : [];
+    return buildMonthData({
+      startDay: range.startDay, endDay: range.endDay, now: new Date(),
+      feeds: rawFeedLogs || [], sleeps: [...(rawSleepLogs || []), ...running], diapers: rawDiaperLogs || [],
+      medicines: rawMedLogs || [], vaccines: rawVaccines || [],
+    });
+  }, [isMonth, range, babyId, sleepSession, rawFeedLogs, rawSleepLogs, rawDiaperLogs, rawMedLogs, rawVaccines]);
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
@@ -156,12 +176,13 @@ export default function SummaryScreen({ navigation, route }) {
             </TouchableOpacity>
           )}
           <View style={{ flex: 1 }}>
-            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.title, { color: C.text }]}>{isMonth ? '30-Day Summary' : 'Daily Summary'}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.title, { color: C.text }]}>{isMonth ? 'Monthly Summary' : 'Daily Summary'}</Text>
           </View>
+          <ExportButton C={C} />
         </View>
 
         <View style={[styles.modeSwitch, { backgroundColor: C.primaryLight }]}>
-          {[{ key: 'day', label: 'Day' }, { key: 'month', label: '30 Days' }].map((m) => {
+          {[{ key: 'day', label: 'Day' }, { key: 'month', label: 'Month' }].map((m) => {
             const active = mode === m.key;
             return (
               <TouchableOpacity
@@ -182,7 +203,7 @@ export default function SummaryScreen({ navigation, route }) {
           style={[styles.datePicker, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}
           accessibilityRole="button"
           accessibilityLabel={isMonth
-            ? `Showing 30 days ending ${format(endDate, 'd MMMM')}. Choose another end date`
+            ? `Showing ${format(month, 'MMMM yyyy')}. Choose another month`
             : `Showing ${format(day, 'EEEE d MMMM')}. Choose another day`}
         >
           <View style={[styles.dateIcon, { backgroundColor: C.primaryLight }]}>
@@ -191,24 +212,24 @@ export default function SummaryScreen({ navigation, route }) {
           <View style={{ flex: 1 }}>
             <Text style={[styles.dateMain, { color: C.text }]}>
               {isMonth
-                ? (shownIsToday ? 'Last 30 days' : `30 days to ${format(endDate, 'd MMM')}`)
+                ? format(month, 'MMMM yyyy')
                 : (viewingToday ? 'Today' : format(day, 'EEEE'))}
             </Text>
             <Text style={[styles.date, { color: C.textSecondary }]}>
               {isMonth
-                ? `${format(addDays(endDate, -(RANGE_DAYS - 1)), 'd MMM')} – ${format(endDate, 'd MMM yyyy')}`
+                ? `${format(range.startDay, 'd MMM')} – ${format(range.endDay, 'd MMM yyyy')}${shownIsToday ? ' (today)' : ''}`
                 : format(day, 'd MMMM yyyy')}
             </Text>
           </View>
           {shownIsToday ? null : (
             <TouchableOpacity
-              onPress={() => setShown(startOfToday())}
+              onPress={backToToday}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               style={[styles.todayBtn, { backgroundColor: C.primaryLight }]}
               accessibilityRole="button"
-              accessibilityLabel="Back to today"
+              accessibilityLabel={isMonth ? 'Back to this month' : 'Back to today'}
             >
-              <Text style={[styles.todayText, { color: C.primary }]}>Today</Text>
+              <Text style={[styles.todayText, { color: C.primary }]}>{isMonth ? 'This month' : 'Today'}</Text>
             </TouchableOpacity>
           )}
           <Ionicons name="chevron-down" size={20} color={C.textSecondary} />
@@ -217,8 +238,11 @@ export default function SummaryScreen({ navigation, route }) {
         {isMonth ? (
           <MonthSummary
             data={monthData}
+            report={monthReport}
+            month={month}
             babyName={baby?.name}
             C={C}
+            darkMode={darkMode}
             onPickDay={(d) => { setDay(d); setMode('day'); }}
           />
         ) : (<>
@@ -340,12 +364,20 @@ export default function SummaryScreen({ navigation, route }) {
       </ScrollView>
 
       <CalendarModal
-        visible={calendarOpen}
-        value={shown}
-        title={isMonth ? 'Choose end date' : 'Choose a day'}
+        visible={calendarOpen && !isMonth}
+        value={day}
+        title="Choose a day"
         C={C}
         onClose={() => setCalendarOpen(false)}
-        onSelect={(d) => { setShown(d); setCalendarOpen(false); }}
+        onSelect={(d) => { setDay(d); setCalendarOpen(false); }}
+      />
+      <MonthPickerModal
+        visible={calendarOpen && isMonth}
+        value={month}
+        title="Choose a month"
+        C={C}
+        onClose={() => setCalendarOpen(false)}
+        onSelect={(m) => { setMonth(m); setCalendarOpen(false); }}
       />
     </View>
   );

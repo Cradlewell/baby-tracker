@@ -52,7 +52,7 @@ export default function BreathingScreen({ navigation }) {
   const save = async () => {
     if (validRate == null && !signs.length) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await addLog(babyId, { rate: validRate, signs, notes: notes.trim() });
+    addLog(babyId, { rate: validRate, signs, notes: notes.trim() });
     setRate('');
     setSigns([]);
     setNotes('');

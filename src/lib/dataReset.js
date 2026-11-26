@@ -1,4 +1,5 @@
 import { useBabyStore } from '../store/useBabyStore';
+import { cancelRemindersForBaby } from './reminders';
 import { useFeedingStore } from '../store/useFeedingStore';
 import { useSleepStore } from '../store/useSleepStore';
 import { useDiaperStore } from '../store/useDiaperStore';
@@ -24,6 +25,7 @@ const LOG_STORES = [
 
 // Deletes a baby's profile and every log stored for them (on the server for a verified client).
 export async function deleteBabyAndData(babyId) {
+  await cancelRemindersForBaby(babyId).catch(() => {});
   await Promise.all(LOG_STORES.map((store) => store.getState().removeBaby(babyId)));
   await useBabyStore.getState().removeBabyProfile(babyId);
 }

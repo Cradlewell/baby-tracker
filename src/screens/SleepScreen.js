@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert,
 } from 'react-native';
@@ -7,7 +7,10 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
 import { useBabyStore } from '../store/useBabyStore';
-import { useSleepStore, classifyIsNap } from '../store/useSleepStore';
+import {
+  useSleepStore, classifyIsNap, MAX_SLEEP_HOURS, MAX_SLEEP_MS, latestEnd, clampEnd,
+} from '../store/useSleepStore';
+import { setReminders, cancelReminder, sleepLimitKey as limitKey } from '../lib/reminders';
 import { COLORS } from '../constants/colors';
 import { FONT_WEIGHT, RADIUS, SPACING, fs } from '../constants/theme';
 import { formatDurationMins, formatDuration, formatRelative, formatTime } from '../utils/formatters';
@@ -15,6 +18,19 @@ import { formatDurationMins, formatDuration, formatRelative, formatTime } from '
 // Local palette for this screen, taken from the user's approved screenshot.
 const SHOT_LIGHT = { blue: '#006BFD', blueText: '#0058D4', tile: '#DAE9FE', hero: '#EBF3FE', card: '#EEF4FE', surface: '#FFFFFF', text: '#032049', textSecondary: '#5A6690', border: '#E1EAFB', background: '#FBFBFE' };
 const SHOT_DARK = { blue: '#006BFD', blueText: '#7FB0FF', tile: '#1C2D52', hero: '#16223D', card: '#131D33', surface: '#1A2540', text: '#EEF3FF', textSecondary: '#A9B6D6', border: '#26324F', background: '#0B1220' };
+
+
+// The "asleep for 10 hours" alarm, at the sleep's start + 10 hours.
+function scheduleSleepLimit(babyId) {
+  const session = useSleepStore.getState().sessions[babyId];
+  if (!session || session.endTime) return;
+  const name = useBabyStore.getState().babies.find((b) => b.id === babyId)?.name || 'Baby';
+  setReminders(limitKey(babyId), [{
+    at: new Date(session.startTime + MAX_SLEEP_MS),
+    title: `${name} has been asleep for ${MAX_SLEEP_HOURS} hours`,
+    body: `The sleep timer stops at ${MAX_SLEEP_HOURS} hours. Open the app and set when baby woke up.`,
+  }]).catch(() => {});
+}
 
 function SleepTimer({ S, session, onRequestEnd, onCancel }) {
   const [now, setNow] = useState(Date.now());
@@ -66,6 +82,92 @@ function SleepTimer({ S, session, onRequestEnd, onCancel }) {
   );
 }
 
+// A sound at the 10-hour mark, so the parent hears it even with the app closed.
+
+/**
+ * The wake-up time on the wake-up form, with buttons to move it. It stays between the start
+ * and the latest allowed end (now, or 10 hours after the start).
+ */
+function WakeTimeEditor({ S, session, onChange }) {
+  const max = latestEnd(session.startTime);
+  const move = (mins) => {
+    Haptics.selectionAsync();
+    onChange(clampEnd(session.startTime, session.endTime + mins * 60000));
+  };
+  const step = (mins, label) => {
+    const target = clampEnd(session.startTime, session.endTime + mins * 60000);
+    const disabled = target === session.endTime;
+    return (
+      <TouchableOpacity
+        key={label}
+        onPress={() => move(mins)}
+        disabled={disabled}
+        style={[styles.timeStep, { backgroundColor: S.tile, opacity: disabled ? 0.4 : 1 }]}
+        accessibilityRole="button"
+        accessibilityLabel={`${mins > 0 ? 'Later' : 'Earlier'} by ${Math.abs(mins)} minutes`}
+      >
+        <Text style={[styles.timeStepText, { color: S.text }]}>{label}</Text>
+      </TouchableOpacity>
+    );
+  };
+  return (
+    <View style={styles.timeEditor}>
+      <Text style={[styles.timeEditorLabel, { color: S.textSecondary }]}>Woke up at</Text>
+      <Text style={[styles.timeEditorValue, { color: S.text }]}>{formatTime(session.endTime)}</Text>
+      <View style={styles.timeSteps}>
+        {step(-60, '−1h')}
+        {step(-15, '−15m')}
+        {step(-5, '−5m')}
+        {step(5, '+5m')}
+        {step(15, '+15m')}
+        {step(60, '+1h')}
+      </View>
+      <Text style={[styles.timeEditorHint, { color: S.textSecondary }]}>
+        Between {formatTime(session.startTime)} and {formatTime(max)} · at most {MAX_SLEEP_HOURS} hours
+      </Text>
+    </View>
+  );
+}
+
+// Another baby sleeping at the same time (twins): their timer keeps running.
+function OtherSleepCard({ S, session, name, onWake }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
+  const end = session.endTime || now;
+  const secs = Math.max(0, Math.floor((end - session.startTime) / 1000));
+  return (
+    <View style={[styles.otherBaby, { backgroundColor: S.hero }]}>
+      <View style={[styles.otherBabyIcon, { backgroundColor: S.tile }]}>
+        <Ionicons name="moon-outline" size={22} color={S.blue} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.otherBabyText, { color: S.text }]} numberOfLines={1}>
+          {name} is {session.endTime ? 'awake' : 'also sleeping'}
+        </Text>
+        <Text style={[styles.otherBabySub, { color: S.textSecondary }]} numberOfLines={1}>
+          {session.endTime
+            ? `Slept ${formatDuration(secs)} · save it`
+            : secs * 1000 >= MAX_SLEEP_MS
+              ? `Reached ${MAX_SLEEP_HOURS} hours · set the wake-up time`
+              : `Since ${formatTime(session.startTime)} · ${formatDurationMins(secs)}`}
+        </Text>
+      </View>
+      <TouchableOpacity
+        onPress={onWake}
+        activeOpacity={0.85}
+        style={[styles.otherBabyBtn, { backgroundColor: S.blue }]}
+        accessibilityRole="button"
+        accessibilityLabel={`${name} woke up`}
+      >
+        <Text style={styles.otherBabyBtnText}>{session.endTime ? 'Open' : 'Wake up'}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 function SleepLogItem({ log, S }) {
   return (
     <View style={[styles.logItem, { backgroundColor: S.card }]}>
@@ -93,7 +195,8 @@ export default function SleepScreen({ navigation }) {
   const S = darkMode ? SHOT_DARK : SHOT_LIGHT;
   const insets = useSafeAreaInsets();
 
-  const session = useSleepStore((s) => s.session);
+  // Every baby has their own sleep timer, so twins can sleep at the same time.
+  const sessions = useSleepStore((s) => s.sessions);
   const logs = useSleepStore((s) => s.logs[babyId]) || [];
   const todaySecs = useSleepStore((s) => s.getTodayTotalSecs(babyId));
   const todayCount = useSleepStore((s) => s.getTodayLogs(babyId).length);
@@ -105,31 +208,75 @@ export default function SleepScreen({ navigation }) {
 
   useEffect(() => {
     if (babyId) load(babyId);
+    setWakeupCount(0);
   }, [babyId]);
 
-  const mySession = session && session.babyId === babyId ? session : null;
-  const otherSession = session && session.babyId !== babyId ? session : null;
-  const otherName = otherSession
-    ? babies.find((b) => b.id === otherSession.babyId)?.name || 'another baby'
-    : null;
+  const mySession = sessions[babyId] || null;
+  const otherSessions = Object.values(sessions)
+    .filter((x) => x.babyId !== babyId && babies.some((b) => b.id === x.babyId));
+  const nameOf = (id) => babies.find((b) => b.id === id)?.name || 'Baby';
+
+  // A sleep that reaches 10 hours stops at the 10-hour mark; the parent is told once and
+  // sets the real wake-up time on the form.
+  const warned = useRef(new Set());
+  useEffect(() => {
+    const check = () => {
+      Object.values(useSleepStore.getState().sessions).forEach((x) => {
+        if (x.endTime || Date.now() - x.startTime < MAX_SLEEP_MS) return;
+        markAwake(x.babyId, x.startTime + MAX_SLEEP_MS);
+        cancelReminder(limitKey(x.babyId));
+        const key = `${x.babyId}@${x.startTime}`;
+        if (warned.current.has(key)) return;
+        warned.current.add(key);
+        const who = nameOf(x.babyId);
+        Alert.alert(
+          `${who}'s sleep reached ${MAX_SLEEP_HOURS} hours`,
+          `A single sleep can be at most ${MAX_SLEEP_HOURS} hours, so the timer stopped at ${formatTime(x.startTime + MAX_SLEEP_MS)}. Set the time ${who} really woke up, then save.`,
+          [
+            { text: 'Later', style: 'cancel' },
+            { text: 'Set wake-up time', onPress: () => { if (x.babyId !== babyId) setActiveBaby(x.babyId); } },
+          ]
+        );
+      });
+    };
+    check();
+    const id = setInterval(check, 30000);
+    return () => clearInterval(id);
+  }, [babyId, babies]);
+
+  // "Wake up" on another baby's card: stop their clock now and open their wake-up form.
+  const wakeOther = (id) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    markAwake(id);
+    cancelReminder(limitKey(id));
+    setActiveBaby(id);
+  };
   // The wake-up form is shown once "Wake Up" froze the end time (also after an app restart).
   const showWakeupForm = !!mySession?.endTime;
 
   const handleStart = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     startSleep(babyId);
+    scheduleSleepLimit(babyId);
+  };
+
+  // "Keep sleeping" after Wake Up: the 10-hour alarm (cancelled by Wake Up) is set again.
+  const handleKeepSleeping = () => {
+    resumeSleeping(babyId);
+    scheduleSleepLimit(babyId);
   };
 
   const handleRequestEnd = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setWakeupCount(0);
-    markAwake();
+    markAwake(babyId);
+    cancelReminder(limitKey(babyId));
   };
 
   const handleCancel = () => {
     Alert.alert('Discard this sleep?', 'The timer will stop and this sleep will not be saved.', [
       { text: 'Keep timing', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: cancelSleep },
+      { text: 'Discard', style: 'destructive', onPress: () => { cancelSleep(babyId); cancelReminder(limitKey(babyId)); } },
     ]);
   };
 
@@ -137,7 +284,8 @@ export default function SleepScreen({ navigation }) {
     if (saving) return;
     setSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await endSleep({ wakeups: wakeupCount });
+    await endSleep(babyId, { wakeups: wakeupCount });
+    cancelReminder(limitKey(babyId));
     setSaving(false);
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 3000);
@@ -183,25 +331,15 @@ export default function SleepScreen({ navigation }) {
           </View>
         )}
 
-        {otherSession && (
-          <View style={[styles.otherBaby, { backgroundColor: S.hero }]}>
-            <View style={[styles.otherBabyIcon, { backgroundColor: S.tile }]}>
-              <Ionicons name="moon-outline" size={22} color={S.blue} />
-            </View>
-            <Text style={[styles.otherBabyText, { color: S.text }]}>
-              A sleep timer is running for {otherName}.
-            </Text>
-            <TouchableOpacity
-              onPress={() => setActiveBaby(otherSession.babyId)}
-              activeOpacity={0.85}
-              style={[styles.otherBabyBtn, { backgroundColor: S.blue }]}
-              accessibilityRole="button"
-              accessibilityLabel={`Switch to ${otherName}`}
-            >
-              <Text style={styles.otherBabyBtnText}>Open</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        {otherSessions.map((x) => (
+          <OtherSleepCard
+            key={x.babyId}
+            S={S}
+            session={x}
+            name={nameOf(x.babyId)}
+            onWake={() => (x.endTime ? setActiveBaby(x.babyId) : wakeOther(x.babyId))}
+          />
+        ))}
 
         {showWakeupForm && (
           <View style={[styles.hero, styles.heroCentered, { backgroundColor: S.hero }]}>
@@ -215,6 +353,7 @@ export default function SleepScreen({ navigation }) {
               <Text style={[styles.wakeupFormRange, { color: S.text }]}>
                 {formatTime(mySession.startTime)} – {formatTime(mySession.endTime)}
               </Text>
+              <WakeTimeEditor S={S} session={mySession} onChange={(at) => markAwake(babyId, at)} />
               <Text style={[styles.wakeupFormQuestion, { color: S.text }]}>
                 How many times did baby wake up?
               </Text>
@@ -245,20 +384,22 @@ export default function SleepScreen({ navigation }) {
               <Ionicons name="checkmark-circle-outline" size={24} color={COLORS.white} />
               <Text style={styles.primaryBtnText}>Save Sleep</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={resumeSleeping}
-              style={styles.linkBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Still sleeping"
-            >
-              <Text style={[styles.heroLink, { color: S.textSecondary }]}>Still sleeping? Keep timing</Text>
-            </TouchableOpacity>
+            {Date.now() - mySession.startTime < MAX_SLEEP_MS ? (
+              <TouchableOpacity
+                onPress={handleKeepSleeping}
+                style={styles.linkBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Still sleeping"
+              >
+                <Text style={[styles.heroLink, { color: S.textSecondary }]}>Still sleeping? Keep timing</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         )}
 
         {!showWakeupForm && mySession ? (
           <SleepTimer S={S} session={mySession} onRequestEnd={handleRequestEnd} onCancel={handleCancel} />
-        ) : !showWakeupForm && !session && (
+        ) : !showWakeupForm && !mySession && (
           <View style={styles.startWrap}>
             {/* Start card with today's sleep info */}
             <View style={[styles.hero, { backgroundColor: S.hero }]}>
@@ -402,6 +543,14 @@ const styles = StyleSheet.create({
     padding: 14, borderRadius: 24, marginBottom: SPACING.md,
   },
   otherBabyIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  timeEditor: { alignItems: 'center', marginTop: SPACING.md, gap: 6, width: '100%' },
+  timeEditorLabel: { fontSize: fs(13), fontWeight: FONT_WEIGHT.semibold },
+  timeEditorValue: { fontSize: fs(26), fontWeight: FONT_WEIGHT.heavy },
+  timeSteps: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 4 },
+  timeStep: { minWidth: 52, minHeight: 44, paddingHorizontal: 10, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
+  timeStepText: { fontSize: fs(14), fontWeight: FONT_WEIGHT.bold },
+  timeEditorHint: { fontSize: fs(12), textAlign: 'center' },
+  otherBabySub: { fontSize: fs(13), fontWeight: FONT_WEIGHT.medium, marginTop: 2 },
   otherBabyText: { flex: 1, fontSize: fs(15), fontWeight: FONT_WEIGHT.semibold },
   otherBabyBtn: { minHeight: 48, justifyContent: 'center', paddingHorizontal: 20, borderRadius: RADIUS.full },
   otherBabyBtnText: { color: COLORS.white, fontWeight: FONT_WEIGHT.heavy, fontSize: fs(15) },

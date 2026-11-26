@@ -1,27 +1,49 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import Svg, { Rect, Line, Circle, Path, Text as SvgText } from 'react-native-svg';
+import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import Svg, { Rect, Line, Path, Text as SvgText } from 'react-native-svg';
 import { format } from 'date-fns';
 
 import { CHART_COLORS as CH, COLORS } from '../constants/colors';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW, TIGHT_TEXT, fs } from '../constants/theme';
-import { DAY_MS, hm, niceMax, pct } from '../lib/dailyReport';
+import { DAY_MS, hm, niceMax, pct, feedWindow, tickLabel, diaperShape, diamondHalves, DIAPER_SHAPES, keyFill } from '../lib/dailyReport';
 
 // The Daily Summary laid out like the PDF report: monitoring table, medicines, vaccines and
 // a chart each for breastfeeding, bottle feeding, sleep and diapers.
 // `data` comes from buildDailyData (lib/dailyReport.js).
 
 const HOURS = [0, 4, 8, 12, 16, 20, 24];
-const PAD_L = 46; // room for lane names / y values
-const PAD_R = 10;
-const AXIS_H = 26;
+export const PAD_L = 62; // room for the y-axis name and the lane names / y values
+export const PAD_R = 10;
+export const AXIS_H = 26;
 
 /** Measures its width, then draws the chart for that width. */
-function Chart({ height, render }) {
+const X_TITLE_H = 20;
+
+/**
+ * Measures its width, then draws the chart for that width, with the x-axis name under it and
+ * the y-axis name running up the left edge. `height` is the plot plus its tick labels.
+ */
+export function Chart({ height, render, xTitle, yTitle, C }) {
   const [w, setW] = useState(0);
+  const total = height + (xTitle ? X_TITLE_H : 0);
+  const mid = (height - AXIS_H) / 2;
   return (
-    <View style={{ height }} onLayout={(e) => setW(Math.round(e.nativeEvent.layout.width))}>
-      {w > 0 ? <Svg width={w} height={height}>{render(w)}</Svg> : null}
+    <View style={{ height: total }} onLayout={(e) => setW(Math.round(e.nativeEvent.layout.width))}>
+      {w > 0 ? (
+        <Svg width={w} height={total}>
+          {render(w)}
+          {xTitle ? (
+            <SvgText x={PAD_L + (w - PAD_L - PAD_R) / 2} y={height + 14} fontSize={fs(11)} fontWeight="bold" fill={C.text} textAnchor="middle">
+              {xTitle}
+            </SvgText>
+          ) : null}
+          {yTitle ? (
+            <SvgText x={10} y={mid} transform={`rotate(-90 10 ${mid})`} fontSize={fs(11)} fontWeight="bold" fill={C.text} textAnchor="middle">
+              {yTitle}
+            </SvgText>
+          ) : null}
+        </Svg>
+      ) : null}
     </View>
   );
 }
@@ -38,7 +60,7 @@ function timeAxis(w, base, C, vTop) {
   ));
 }
 
-function valueGrid(w, max, top, base, C) {
+export function valueGrid(w, max, top, base, C) {
   return [0, 1, 2, 3, 4].map((i) => {
     const y = base - ((base - top) * i) / 4;
     const v = (max * i) / 4;
@@ -53,10 +75,23 @@ function valueGrid(w, max, top, base, C) {
   });
 }
 
+// Feeding charts: the axis runs from the first feed of the day, not from 00:00.
+function feedScale(list, dayStart, w) {
+  const win = feedWindow(list.map((f) => f.at), dayStart);
+  const pad = 8;
+  const x = (ms) => PAD_L + pad + ((Math.min(Math.max(ms, win.from), win.to) - win.from) / (win.to - win.from)) * (w - PAD_L - PAD_R - 2 * pad);
+  const axis = (base, C) => win.ticks.map((t) => (
+    <SvgText key={`t${t}`} x={x(t)} y={base + 16} fontSize={fs(10)} fill={C.textSecondary} textAnchor="middle">
+      {tickLabel(t, dayStart)}
+    </SvgText>
+  ));
+  return { x, axis };
+}
+
 const xOf = (start, w) => (ms) => PAD_L + (Math.min(Math.max(ms - start, 0), DAY_MS) / DAY_MS) * (w - PAD_L - PAD_R);
 
 // ---------- Small pieces ----------
-function Section({ n, title, C, children }) {
+export function Section({ n, title, C, children }) {
   return (
     <View style={styles.section}>
       <Text style={[styles.sectionTitle, { color: C.text }]}>{`${n}. ${title}`}</Text>
@@ -65,7 +100,7 @@ function Section({ n, title, C, children }) {
   );
 }
 
-function Stats({ items, C }) {
+export function Stats({ items, C }) {
   return (
     <View style={styles.stats}>
       {items.filter(Boolean).map(([label, value, colour, big = true]) => (
@@ -78,7 +113,7 @@ function Stats({ items, C }) {
   );
 }
 
-function Legend({ items, C }) {
+export function Legend({ items, C }) {
   return (
     <View style={styles.legend}>
       {items.map(([label, colour]) => (
@@ -91,7 +126,7 @@ function Legend({ items, C }) {
   );
 }
 
-function Split({ a, b, colourA, colourB, caption, labels, labelColours = [], C }) {
+export function Split({ a, b, colourA, colourB, caption, labels, labelColours = [], C }) {
   if (!(a + b)) return null;
   return (
     <View style={{ marginTop: SPACING.sm }}>
@@ -110,20 +145,24 @@ function Split({ a, b, colourA, colourB, caption, labels, labelColours = [], C }
   );
 }
 
-const Empty = ({ text, C }) => <Text style={[styles.empty, { color: C.textMuted }]}>{text}</Text>;
-const AxisTitle = ({ text, C }) => <Text style={[styles.axisTitle, { color: C.text }]}>{text}</Text>;
+export const Empty = ({ text, C }) => <Text style={[styles.empty, { color: C.textMuted }]}>{text}</Text>;
+export const AxisTitle = ({ text, C }) => <Text style={[styles.axisTitle, { color: C.text }]}>{text}</Text>;
 
 // ---------- Monitoring table ----------
 const COLS = [
   { group: 'Breastfeeding (min)', subs: ['LB', 'RB', 'Total'], width: 40 },
   { group: 'Bottle feeding', subs: ['Min', 'mL'], width: 42 },
   { group: 'Sleep cycle', subs: ['Sleep', 'Awake'], width: 62 },
-  { group: 'Diapers', subs: ['Wet', 'Stool', 'Both'], width: 44 },
+  { group: 'Diapers', subs: ['Wet', 'Stool', 'Both', 'Dry'], width: 44 },
 ];
 const CELL_W = COLS.flatMap((g) => g.subs.map(() => g.width));
 const TIME_W = 56;
 
-function MonitoringTable({ data, C }) {
+/**
+ * rows: [{ cells }] · footer: [{ label, cells }] (Total, Daily average)
+ * firstHeader / firstLabel: the first column (Time for a day, Date for a month)
+ */
+export function MonitoringTable({ rows, footer, C, firstHeader = 'Time', firstLabel = (r) => format(r.at, 'HH:mm'), onPressRow }) {
   const cell = (v) => (v === true ? '✓' : v === undefined || v === null || v === '' ? '–' : String(v));
   const tx = (v, i, bold) => (
     <Text
@@ -139,7 +178,7 @@ function MonitoringTable({ data, C }) {
     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
       <View>
         <View style={[styles.tr, styles.thead, { backgroundColor: C.primaryLight }]}>
-          <Text style={[styles.th, styles.tl, { width: TIME_W, color: C.text }]} {...TIGHT_TEXT}>Time</Text>
+          <Text style={[styles.th, styles.tl, { width: TIME_W, color: C.text }]} {...TIGHT_TEXT}>{firstHeader}</Text>
           {COLS.map((g) => (
             <Text key={g.group} style={[styles.th, { width: g.width * g.subs.length, color: C.text }]} {...TIGHT_TEXT}>{g.group}</Text>
           ))}
@@ -150,16 +189,32 @@ function MonitoringTable({ data, C }) {
             <Text key={s} style={[styles.thSub, { width: g.width, color: C.textSecondary }]} {...TIGHT_TEXT}>{s}</Text>
           )))}
         </View>
-        {data.rows.map((r, ri) => (
-          <View key={`${r.at}-${ri}`} style={[styles.tr, { borderBottomColor: C.border }]}>
-            <Text style={[styles.td, styles.tl, { width: TIME_W, color: C.text }]} {...TIGHT_TEXT}>{format(r.at, 'HH:mm')}</Text>
-            {CELL_W.map((_, i) => tx(r.cells[i], i))}
+        {rows.map((r, ri) => {
+          const label = firstLabel(r);
+          const inner = (
+            <>
+              <Text style={[styles.td, styles.tl, { width: TIME_W, color: onPressRow ? C.primary : C.text }]} {...TIGHT_TEXT}>{label}</Text>
+              {CELL_W.map((_, i) => tx(r.cells[i], i))}
+            </>
+          );
+          return onPressRow ? (
+            <Pressable
+              key={`r${ri}`}
+              onPress={() => onPressRow(r)}
+              style={({ pressed }) => [styles.tr, { borderBottomColor: C.border }, pressed && { backgroundColor: C.primaryLight }]}
+              accessibilityRole="button"
+              accessibilityLabel={`${label}. Open this day`}
+            >
+              {inner}
+            </Pressable>
+          ) : <View key={`r${ri}`} style={[styles.tr, { borderBottomColor: C.border }]}>{inner}</View>;
+        })}
+        {footer.map((f, fi) => (
+          <View key={f.label} style={[styles.tr, fi === 0 && styles.total, { borderTopColor: C.primary, backgroundColor: C.primaryLight, borderBottomColor: C.border }]}>
+            <Text style={[styles.td, styles.tl, { width: TIME_W, color: C.text }]} numberOfLines={2} {...TIGHT_TEXT}>{f.label}</Text>
+            {f.cells.map((v, i) => tx(v, i, true))}
           </View>
         ))}
-        <View style={[styles.tr, styles.total, { borderTopColor: C.primary, backgroundColor: C.primaryLight }]}>
-          <Text style={[styles.td, styles.tl, { width: TIME_W, color: C.text }]} {...TIGHT_TEXT}>Total</Text>
-          {data.totals.map((v, i) => tx(v, i, true))}
-        </View>
       </View>
     </ScrollView>
   );
@@ -171,8 +226,8 @@ function BreastChart({ data, C }) {
   const base = 150;
   const max = niceMax(Math.max(...data.breast.map((f) => Math.max(f.left, f.right))));
   return (
-    <Chart height={base + AXIS_H} render={(w) => {
-      const x = xOf(data.start, w);
+    <Chart height={base + AXIS_H} C={C} xTitle="Time of day" yTitle="Duration (min)" render={(w) => {
+      const { x, axis } = feedScale(data.breast, data.start, w);
       const h = (v) => ((base - top) * v) / max;
       return (
         <>
@@ -183,7 +238,7 @@ function BreastChart({ data, C }) {
               {f.right ? <Rect x={x(f.at) + 1} y={base - h(f.right)} width={4} height={h(f.right)} fill={CH.right} /> : null}
             </React.Fragment>
           ))}
-          {timeAxis(w, base, C, null)}
+          {axis(base, C)}
         </>
       );
     }} />
@@ -195,8 +250,8 @@ function BottleChart({ data, C }) {
   const base = 150;
   const max = niceMax(Math.max(...data.bottle.map((f) => f.ml)));
   return (
-    <Chart height={base + AXIS_H} render={(w) => {
-      const x = xOf(data.start, w);
+    <Chart height={base + AXIS_H} C={C} xTitle="Time of day" yTitle="Milk consumed (mL)" render={(w) => {
+      const { x, axis } = feedScale(data.bottle, data.start, w);
       const h = (v) => ((base - top) * v) / max;
       return (
         <>
@@ -205,11 +260,11 @@ function BottleChart({ data, C }) {
             <React.Fragment key={`m${f.at}`}>
               <Rect x={x(f.at) - 6} y={base - h(f.ml)} width={12} height={h(f.ml)} rx={2} fill={CH.bottle} />
               <SvgText x={x(f.at)} y={base - h(f.ml) - 4} fontSize={fs(10)} fontWeight="bold" fill={C.text} textAnchor="middle">
-                {String(f.ml)}
+                {`${f.ml}ml`}
               </SvgText>
             </React.Fragment>
           ))}
-          {timeAxis(w, base, C, null)}
+          {axis(base, C)}
         </>
       );
     }} />
@@ -220,14 +275,14 @@ function SleepChart({ data, C }) {
   const base = 130;
   const lane = (x, label, y, list, colour) => (
     <React.Fragment key={label}>
-      <SvgText x={0} y={y + 4} fontSize={fs(12)} fill={C.text}>{label}</SvgText>
+      <SvgText x={18} y={y + 4} fontSize={fs(12)} fill={C.text}>{label}</SvgText>
       {list.map(([s, e]) => (
         <Rect key={`${label}${s}`} x={x(s)} y={y - 20} width={Math.max(2, x(e) - x(s))} height={40} rx={2} fill={colour} />
       ))}
     </React.Fragment>
   );
   return (
-    <Chart height={base + AXIS_H} render={(w) => {
+    <Chart height={base + AXIS_H} C={C} xTitle="Time of day" yTitle="Sleep state" render={(w) => {
       const x = xOf(data.start, w);
       return (
         <>
@@ -242,35 +297,59 @@ function SleepChart({ data, C }) {
 
 const R_DOT = 7;
 
-function DiaperChart({ data, C, stoolColour }) {
-  const base = 150;
-  const lanes = [['Wet', 'urine', 25, CH.wet], ['Stool', 'stool', 75, stoolColour], ['Both', 'both', 125, CH.both]];
+/**
+ * One diaper as a marker in its logged colour and its type's shape (circle wet, square stool,
+ * diamond both with urine / stool halves, triangle dry); same shapes as the PDF.
+ */
+export function DiaperDot({ d, cx, cy, r = R_DOT, stoolColour, ring }) {
+  const outline = diaperShape(d.type, cx, cy, r);
+  if (d.type === 'both') {
+    const [left, right] = diamondHalves(cx, cy, r);
+    return (
+      <>
+        <Path d={left} fill={d.urine?.swatch || CH.wet} />
+        <Path d={right} fill={d.stool?.swatch || stoolColour} />
+        <Path d={outline} fill="none" stroke={ring} strokeWidth={1} strokeLinejoin="round" />
+      </>
+    );
+  }
+  const fill = d.type === 'urine' ? d.urine?.swatch || CH.wet
+    : d.type === 'stool' ? d.stool?.swatch || stoolColour : CH.dry;
+  return <Path d={outline} fill={fill} stroke={ring} strokeWidth={1} strokeLinejoin="round" />;
+}
+
+/** The chart key: each type's shape; wet and dry in their fixed colours, stool and both grey. */
+export function ShapeKey({ C }) {
   return (
-    <Chart height={base + AXIS_H} render={(w) => {
+    <View style={styles.ckey}>
+      {DIAPER_SHAPES.map(([type, label]) => (
+        <View key={type} style={styles.ckeyItem}>
+          <Svg width={16} height={16}>
+            <Path d={diaperShape(type, 8, 8, 5.5)} fill={keyFill(type, C.border)} stroke={C.textMuted} strokeWidth={1} strokeLinejoin="round" />
+          </Svg>
+          <Text style={[styles.ckeyText, { color: C.textSecondary }]}>{label}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function DiaperChart({ data, C, stoolColour }) {
+  const base = 170;
+  const lanes = [['Wet', 'urine', 20], ['Stool', 'stool', 62], ['Both', 'both', 104], ['Dry', 'dry', 146]];
+  return (
+    <Chart height={base + AXIS_H} C={C} xTitle="Time of day" yTitle="Diaper type" render={(w) => {
       const x = xOf(data.start, w);
       return (
         <>
           {timeAxis(w, base, C, 6)}
-          {lanes.map(([label, type, y, colour]) => (
+          {lanes.map(([label, type, y]) => (
             <React.Fragment key={label}>
               <Line x1={PAD_L} y1={y} x2={w - PAD_R} y2={y} stroke={C.border} strokeWidth={1} />
-              <SvgText x={0} y={y + 4} fontSize={fs(12)} fill={C.text}>{label}</SvgText>
-              {data.diapers.filter((d) => d.type === type).map((d, i) => {
-                const cx = x(d.at);
-                const k = `${label}${d.at}-${i}`;
-                if (type === 'both') {
-                  // Half urine colour (left), half stool colour (right).
-                  return (
-                    <React.Fragment key={k}>
-                      <Path d={`M${cx},${y - R_DOT} A${R_DOT},${R_DOT} 0 0 0 ${cx},${y + R_DOT} Z`} fill={d.urine?.swatch || CH.wet} />
-                      <Path d={`M${cx},${y - R_DOT} A${R_DOT},${R_DOT} 0 0 1 ${cx},${y + R_DOT} Z`} fill={d.stool?.swatch || stoolColour} />
-                      <Circle cx={cx} cy={y} r={R_DOT} fill="none" stroke={C.textMuted} strokeWidth={1} />
-                    </React.Fragment>
-                  );
-                }
-                const fill = (type === 'urine' ? d.urine?.swatch : d.stool?.swatch) || colour;
-                return <Circle key={k} cx={cx} cy={y} r={R_DOT} fill={fill} stroke={C.textMuted} strokeWidth={1} />;
-              })}
+              <SvgText x={18} y={y + 4} fontSize={fs(12)} fill={C.text}>{label}</SvgText>
+              {data.diapers.filter((d) => d.type === type).map((d, i) => (
+                <DiaperDot key={`${label}${d.at}-${i}`} d={d} cx={x(d.at)} cy={y} stoolColour={stoolColour} ring={C.textMuted} />
+              ))}
             </React.Fragment>
           ))}
         </>
@@ -283,12 +362,13 @@ function DiaperChart({ data, C, stoolColour }) {
 export default function DailyReport({ data, C, darkMode, onDay }) {
   const { s } = data;
   const stoolColour = darkMode ? CH.stoolDark : CH.stool;
-  const tint = darkMode ? CH.right : '#4A63D9'; // text in the light blue series, readable on the card
+  const tint = darkMode ? CH.awake : CH.awakeText; // awake text, readable on the card
+  const sleepTint = darkMode ? CH.sleep : CH.sleepText;
 
   return (
     <View>
       <Section n={1} title="Daily monitoring table" C={C}>
-        {data.rows.length ? <MonitoringTable data={data} C={C} /> : <Empty text={`Nothing recorded ${onDay}`} C={C} />}
+        {data.rows.length ? <MonitoringTable rows={data.rows} footer={[{ label: 'Total', cells: data.totals }]} C={C} /> : <Empty text={`Nothing recorded ${onDay}`} C={C} />}
       </Section>
 
       <Section n={2} title="Medicines & supplements" C={C}>
@@ -319,14 +399,14 @@ export default function DailyReport({ data, C, darkMode, onDay }) {
             <Stats C={C} items={[
               ['Sessions', String(data.breast.length)],
               ['Total duration', hm((s.breastLeft + s.breastRight) * 60)],
-              ['Left breast', `${s.breastLeft} min (${pct(s.breastLeft, s.breastRight)})`, CH.left],
-              ['Right breast', `${s.breastRight} min (${pct(s.breastRight, s.breastLeft)})`, tint],
+              ['Left breast', `${s.breastLeft} min (${pct(s.breastLeft, s.breastRight)})`, darkMode ? CH.left : CH.leftText],
+              ['Right breast', `${s.breastRight} min (${pct(s.breastRight, s.breastLeft)})`, darkMode ? CH.right : CH.rightText],
             ]} />
             <Legend C={C} items={[['Left breast', CH.left], ['Right breast', CH.right]]} />
-            <AxisTitle text="Duration (min)" C={C} />
             <BreastChart data={data} C={C} />
             <Split a={s.breastLeft} b={s.breastRight} colourA={CH.left} colourB={CH.right} C={C}
-              labels={['Left breast', 'Right breast']} />
+              labels={['Left breast', 'Right breast']}
+              labelColours={darkMode ? [CH.left, CH.right] : [CH.leftText, CH.rightText]} />
           </>
         ) : <Empty text={`No breastfeeds ${onDay}`} C={C} />}
       </Section>
@@ -336,11 +416,10 @@ export default function DailyReport({ data, C, darkMode, onDay }) {
           <>
             <Stats C={C} items={[
               ['Total feeds', String(data.bottle.length)],
-              ['Milk consumed', `${s.bottleMl} mL`, CH.bottle],
+              ['Milk consumed', `${s.bottleMl} mL`, darkMode ? CH.bottle : CH.bottleText],
               ['Feeding duration', `${s.bottleMin} min`, null, false],
               ['Average per feed', `${Math.round(s.bottleMl / data.bottle.length)} mL`, null, false],
             ]} />
-            <AxisTitle text="Milk consumed (mL)" C={C} />
             <BottleChart data={data} C={C} />
           </>
         ) : <Empty text={`No bottle feeds ${onDay}`} C={C} />}
@@ -350,7 +429,7 @@ export default function DailyReport({ data, C, darkMode, onDay }) {
         {data.sleepParts.length ? (
           <>
             <Stats C={C} items={[
-              ['Total sleep', `${hm(s.sleepSecs)} (${pct(s.sleepSecs, s.awakeSecs)})`, CH.sleep],
+              ['Total sleep', `${hm(s.sleepSecs)} (${pct(s.sleepSecs, s.awakeSecs)})`, sleepTint],
               ['Total awake', `${hm(s.awakeSecs)} (${pct(s.awakeSecs, s.sleepSecs)})`, tint],
               ['Sleep periods', String(data.sleepParts.length), null, false],
               ['Longest sleep', hm(s.longestSleep), null, false],
@@ -363,7 +442,7 @@ export default function DailyReport({ data, C, darkMode, onDay }) {
               caption={data.end - data.start >= DAY_MS
                 ? '24-hour sleep and awake distribution'
                 : `Sleep and awake distribution (00:00–${format(data.end, 'HH:mm')})`}
-              labels={['Sleep', 'Awake']} labelColours={[CH.sleep, tint]} />
+              labels={['Sleep', 'Awake']} labelColours={[sleepTint, tint]} />
           </>
         ) : <Empty text={`No sleep ${onDay}`} C={C} />}
       </Section>
@@ -373,30 +452,17 @@ export default function DailyReport({ data, C, darkMode, onDay }) {
           <>
             <Stats C={C} items={[
               ['Diaper changes', String(data.diapers.length)],
-              ['Wet only', String(s.wet), CH.wet],
+              ['Wet only', String(s.wet), darkMode ? CH.wet : CH.wetText],
               ['Stool only', String(s.stool), stoolColour],
               ['Both wet and stool', String(s.both), CH.both],
+              ['Dry', String(s.dry), darkMode ? CH.dry : CH.dryText],
             ]} />
             <DiaperChart data={data} C={C} stoolColour={stoolColour} />
-            {data.diaperColours.length ? (
-              <View style={styles.ckey}>
-                <Text style={[styles.ckeyTitle, { color: C.text }]}>Colours logged</Text>
-                {data.diaperColours.map((c) => (
-                  <View key={`${c.kind}${c.value}`} style={styles.ckeyItem}>
-                    <View style={[styles.ckeyDot, { backgroundColor: c.swatch, borderColor: C.textMuted }]} />
-                    <Text style={[styles.ckeyText, { color: C.textSecondary }]}>
-                      {`${c.kind}: ${c.label}`}
-                      {c.warn ? <Text style={{ color: COLORS.warning, fontWeight: FONT_WEIGHT.bold }}> (tell the doctor)</Text> : null}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            ) : null}
+            <ShapeKey C={C} />
             <View style={[styles.rule, { borderTopColor: C.border }]} />
             <Stats C={C} items={[
               ['Containing urine', String(s.wet + s.both)],
               ['Containing stool', String(s.stool + s.both)],
-              s.dry ? ['Checked and dry', String(s.dry)] : null,
             ]} />
           </>
         ) : <Empty text={`No diaper changes ${onDay}`} C={C} />}
@@ -405,7 +471,7 @@ export default function DailyReport({ data, C, darkMode, onDay }) {
   );
 }
 
-const styles = StyleSheet.create({
+export const styles = StyleSheet.create({
   section: { marginBottom: SPACING.lg },
   sectionTitle: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, marginBottom: SPACING.sm },
   card: { borderRadius: RADIUS.xl, borderWidth: 1, padding: SPACING.md },
@@ -422,11 +488,9 @@ const styles = StyleSheet.create({
   caption: { fontSize: FONT_SIZE.xs, marginBottom: 6 },
   splitLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
   splitLabel: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.medium },
-  ckey: { marginTop: SPACING.sm, gap: 6 },
-  ckeyTitle: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold },
-  ckeyItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  ckeyDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 1 },
-  ckeyText: { flex: 1, fontSize: FONT_SIZE.xs },
+  ckey: { marginTop: SPACING.sm, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 14 },
+  ckeyItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  ckeyText: { fontSize: FONT_SIZE.xs },
   split: { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden' },
   rule: { borderTopWidth: 1, marginVertical: SPACING.md },
   empty: { fontSize: FONT_SIZE.sm, textAlign: 'center', paddingVertical: 4 },

@@ -1,4 +1,5 @@
-import { URINE_COLORS, STOOL_COLORS, findColor } from '../store/useDiaperStore';
+import { format } from 'date-fns';
+import { STOOL_COLORS, findColor, urineColourOf } from '../store/useDiaperStore';
 import { upcomingDoses } from '../store/useMedicineStore';
 import { temperatureStatus, breathingStatus, skinStatus } from '../store/useHealthStores';
 import { parseDob } from '../utils/formatters';
@@ -73,18 +74,22 @@ export function healthCheck({ baby, feeds = [], diapers = [], medicines = [], va
     }
   }
 
-  // Diaper colours logged in the last 24 hours.
-  const recentDiapers = diapers.filter((l) => withinHours(l, 24, now));
-  for (const l of recentDiapers) {
-    const u = findColor(URINE_COLORS, l.urineColor);
+  // Diaper colours logged in the last 24 hours: one alert for every diaper, newest first, with
+  // its time. The diaper's id makes each alert's id unique.
+  const recentDiapers = diapers.filter((l) => withinHours(l, 24, now))
+    .sort((a, b) => eventTime(b) - eventTime(a));
+  recentDiapers.forEach((l, i) => {
+    const u = urineColourOf(l);
     const st = findColor(STOOL_COLORS, l.stoolColor);
     for (const [c, kind] of [[u, 'urine'], [st, 'stool']]) {
       if (!c?.warn) continue;
       const urgent = c.value === 'red' || c.value === 'pale' || c.value === 'black';
-      add(urgent ? 'urgent' : 'attention', `colour-${kind}-${c.value}`, `${kind === 'urine' ? 'Urine' : 'Stool'} colour: ${c.label}`, c.warn, 'Diaper',
-        eventTime(l), l.id);
+      const at = eventTime(l);
+      const when = Number.isFinite(at) ? ` at ${format(at, 'h:mm a')}` : '';
+      add(urgent ? 'urgent' : 'attention', `colour-${kind}-${c.value}-${l.id ?? i}`,
+        `${kind === 'urine' ? 'Urine' : 'Stool'} colour: ${c.label}${when}`, c.warn, 'Diaper', at, l.id);
     }
-  }
+  });
 
   // Latest temperature, breathing and skin checks.
   const latest = (list, hours) => list.filter((l) => withinHours(l, hours, now))

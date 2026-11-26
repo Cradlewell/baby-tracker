@@ -3,10 +3,10 @@ import { View } from 'react-native';
 
 import { AuthScreen, AuthHeader, Field, PrimaryButton, TextLink, Banner, RoleToggle } from '../components/AuthUI';
 import { login, resendRegistrationOtp } from '../lib/session';
-import { useBabyStore } from '../store/useBabyStore';
+import ContinueWithGoogle, { goAfterLogin } from '../components/ContinueWithGoogle';
 
 export default function LoginScreen({ navigation, route }) {
-  const [role, setRole] = useState(route.params?.role || 'nurse');
+  const [role, setRole] = useState(route.params?.role || 'client');
   const [email, setEmail] = useState(route.params?.email || '');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
@@ -20,15 +20,8 @@ export default function LoginScreen({ navigation, route }) {
     setBusy(true);
     setError(null);
     try {
-      const status = await login(email.trim(), password, role);
-      if (status === 'ready') {
-        // Client (parent): straight to their own dashboard.
-        const { onboardingDone } = useBabyStore.getState();
-        navigation.reset({ index: 0, routes: [{ name: onboardingDone ? 'Main' : 'Onboarding' }] });
-      } else {
-        // Nurse: choose which client's records to open.
-        navigation.reset({ index: 0, routes: [{ name: 'ClientVerify' }] });
-      }
+      // A client (parent) goes straight to their dashboard; a nurse chooses a client.
+      goAfterLogin(navigation, await login(email.trim(), password, role));
     } catch (err) {
       if (err.code === 'account_not_verified') {
         // Sign-up was never finished: send a fresh code and continue verification.
@@ -84,6 +77,8 @@ export default function LoginScreen({ navigation, route }) {
       />
       <View style={{ height: 8 }} />
       <PrimaryButton label="Log in" onPress={submit} loading={busy} disabled={!canSubmit} />
+      <ContinueWithGoogle navigation={navigation} role={role} onError={setError} disabled={busy} />
     </AuthScreen>
   );
 }
+

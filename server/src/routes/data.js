@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { clientsDb, withTransaction } from '../db.js';
 import { requireAuth, requireClient } from '../sessions.js';
-import { badRequest, notFound, conflict } from '../errors.js';
+import { badRequest, notFound, conflict, forbidden } from '../errors.js';
 
 // Monitoring data for the client verified in this session. Every query is scoped to
 // req.auth.clientId, so one client's records can never be read or changed from another.
@@ -63,6 +63,14 @@ async function assertOwnBaby(babyId, clientId) {
   if (!rows[0] || Number(rows[0].client_id) !== Number(clientId)) throw notFound('baby_not_found', 'Baby not found.');
 }
 
+// Only the family (client account) may delete a baby or wipe a baby's records. A nurse can add
+// and edit entries but never remove a baby's data.
+function forbidNurseDelete(req) {
+  if (req.auth.role === 'nurse') {
+    throw forbidden('nurse_cannot_delete', "Nurses can't delete a baby's data. Ask the family to do it.");
+  }
+}
+
 function requireType(type) {
   if (!RECORD_TYPES.includes(type)) throw notFound('unknown_type', 'Unknown record type.');
   return type;
@@ -87,6 +95,7 @@ dataRouter.patch('/babies', async (req, res) => {
       }
     },
   });
+  if (del.length) forbidNurseDelete(req);
   const pos = positionsFrom(order);
 
   await withTransaction(clientsDb, async (conn) => {
@@ -114,6 +123,7 @@ dataRouter.patch('/babies', async (req, res) => {
 
 // "Clear all data": removes every baby and record of this client.
 dataRouter.delete('/babies', async (req, res) => {
+  forbidNurseDelete(req);
   const [result] = await clientsDb.query('DELETE FROM babies WHERE client_id = ?', [req.auth.clientId]);
   res.json({ deleted: result.affectedRows });
 });
@@ -159,6 +169,7 @@ dataRouter.patch('/babies/:babyId/records/:type', async (req, res) => {
 });
 
 dataRouter.delete('/babies/:babyId/records/:type', async (req, res) => {
+  forbidNurseDelete(req);
   const type = requireType(req.params.type);
   await assertOwnBaby(req.params.babyId, req.auth.clientId);
   const [result] = await clientsDb.query(

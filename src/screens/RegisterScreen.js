@@ -3,6 +3,7 @@ import { View } from 'react-native';
 
 import { AuthScreen, AuthHeader, Field, PrimaryButton, TextLink, Banner, RoleToggle } from '../components/AuthUI';
 import { register } from '../lib/session';
+import ContinueWithGoogle from '../components/ContinueWithGoogle';
 
 // Mirrors the server's checks so most mistakes are shown before anything is sent.
 function validate(f) {
@@ -28,7 +29,7 @@ const SERVER_FIELD = {
 };
 
 export default function RegisterScreen({ navigation, route }) {
-  const [role, setRole] = useState(route?.params?.role || 'nurse');
+  const [role, setRole] = useState(route?.params?.role || 'client');
   const [form, setForm] = useState({ fullName: '', phone: '', email: '', password: '', confirmPassword: '' });
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState(false);
@@ -156,6 +157,7 @@ export default function RegisterScreen({ navigation, route }) {
       />
       <View style={{ height: 8 }} />
       <PrimaryButton label="Create account" onPress={submit} loading={busy} />
+      <ContinueWithGoogle navigation={navigation} role={role} onError={setError} disabled={busy} />
     </AuthScreen>
   );
 }

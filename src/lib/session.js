@@ -5,11 +5,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api, setApiToken, isNetworkError } from './api';
 import { setRemoteClient, clearClientCache, flushPending } from './storage';
 import { resetInMemoryState } from './dataReset';
-import { cancelAllReminders } from './reminders';
+import { cancelAllReminders, cancelTimerReminders } from './reminders';
 import { useAuthStore } from '../store/useAuthStore';
 import { useBabyStore } from '../store/useBabyStore';
 import { useFeedingStore } from '../store/useFeedingStore';
 import { useSleepStore } from '../store/useSleepStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 const TOKEN_KEY = 'cw_session_token';
 // Non-secret copy of the user and client names, so the app can open offline.
@@ -90,7 +91,25 @@ export const verifyRegistrationOtp = (email, otp) => api.post('/auth/register/ve
 // role: 'nurse' (then asks for a client's phone number) or 'client' (a parent: the server opens
 // their own records at once). Returns 'needsClient' or 'ready'.
 export async function login(email, password, role = 'nurse') {
-  const { token, user, client } = await api.post('/auth/login', { email, password, role }, { auth: false });
+  return finishLogin(await api.post('/auth/login', { email, password, role }, { auth: false }));
+}
+
+// Continue with Google. An existing account signs in: resolves { status }. A new person gets
+// { needsSignup, signupToken, fullName, email } and is asked for a phone number next.
+export async function googleLogin(idToken, role = 'nurse') {
+  const res = await api.post('/auth/google', { idToken, role }, { auth: false });
+  if (res.needsSignup) return res;
+  return { status: await finishLogin(res) };
+}
+
+// The phone-number step for a new Google user: saves the phone, signs in, resolves { status }.
+export async function completeGoogleSignup({ signupToken, phone, role, fullName }) {
+  const res = await api.post('/auth/google/signup', { signupToken, phone, role, fullName }, { auth: false });
+  return { status: await finishLogin(res) };
+}
+
+// Stores the session from a login response. Returns 'needsClient' or 'ready'.
+async function finishLogin({ token, user, client }) {
   await tokenStore.set(token);
   setApiToken(token);
   if (client) {
@@ -138,10 +157,12 @@ async function openClient(client) {
 
 // Loads the verified client's babies, restores running timers, and sends offline changes.
 export async function loadClientData() {
+  // Babies first: only this client's babies get their running timers back.
+  await useBabyStore.getState().load();
+  const babyIds = useBabyStore.getState().babies.map((b) => b.id);
   await Promise.all([
-    useBabyStore.getState().load(),
-    useFeedingStore.getState().restoreSession(),
-    useSleepStore.getState().restoreSession(),
+    useFeedingStore.getState().restoreSession(babyIds),
+    useSleepStore.getState().restoreSession(babyIds),
   ]);
   flushPending().catch(() => {});
 }
@@ -158,12 +179,18 @@ async function endLocalSession() {
   await clearRunningTimers();
   // A logged-out phone should not keep ringing for clients' medicines and vaccines.
   await cancelAllReminders();
+  // The PIN belonged to whoever was logged in; the next person sets their own.
+  await useSettingsStore.getState().disableLock();
   await tokenStore.remove().catch(() => {});
   await AsyncStorage.removeItem(PROFILE_KEY).catch(() => {});
   setApiToken(null);
   resetInMemoryState();
   applyState(null, null);
 }
+
+// Change password (logged in). The other phones on this account are signed out by the server.
+export const changePassword = (currentPassword, newPassword, confirmPassword) =>
+  api.post('/auth/password', { currentPassword, newPassword, confirmPassword });
 
 export async function logout() {
   await api.post('/auth/logout').catch(() => {});
@@ -176,6 +203,9 @@ export async function switchClient() {
   await api.post('/client/leave').catch(() => {});
   await clearClientCache(client?.id);
   await clearRunningTimers();
+  // The timers are gone, so their 3-hour / 10-hour alarms must not ring. Medicine and vaccine
+  // reminders stay: they are real dates for that client's baby.
+  await cancelTimerReminders().catch(() => {});
   resetInMemoryState();
   await saveProfile(user, null);
   applyState(user, null);

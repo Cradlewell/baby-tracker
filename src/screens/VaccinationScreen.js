@@ -13,34 +13,12 @@ import { useVaccinationStore, SCHEDULE_SOURCE } from '../store/useVaccinationSto
 import { COLORS } from '../constants/colors';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, fs } from '../constants/theme';
 import { parseDob, formatDobInput } from '../utils/formatters';
-import { setReminders, cancelReminder, vaccineReminderKey } from '../lib/reminders';
+import { setReminders, cancelReminder, vaccineReminderKey, remindersAllowed } from '../lib/reminders';
+import { remindersOnKey, REMIND_NEXT, vaccineReminderItems } from '../lib/vaccineReminders';
 
 // Local palette for this screen, taken from the user's approved screenshot.
 const SHOT_LIGHT = { blue: '#006BFD', blueText: '#0058D4', tile: '#DAE9FE', hero: '#EBF3FE', card: '#EEF4FE', surface: '#FFFFFF', text: '#032049', textSecondary: '#5A6690', border: '#E1EAFB', background: '#FBFBFE' };
 const SHOT_DARK = { blue: '#006BFD', blueText: '#7FB0FF', tile: '#1C2D52', hero: '#16223D', card: '#131D33', surface: '#1A2540', text: '#EEF3FF', textSecondary: '#A9B6D6', border: '#26324F', background: '#0B1220' };
-
-// Whether this phone rings for this baby's vaccines (a phone setting, not synced).
-const remindersOnKey = (babyId) => `@cw_vacc_reminders_on_${babyId}`;
-// Reminders cover the next few vaccines only (phones limit how many can be scheduled);
-// they are scheduled again whenever this screen opens or a vaccine is marked.
-const REMIND_NEXT = 5;
-
-function vaccineReminderItems(upcoming, babyName) {
-  const items = [];
-  for (const v of upcoming.slice(0, REMIND_NEXT)) {
-    const due = new Date(v.dueDate);
-    const dayBefore = new Date(due);
-    dayBefore.setDate(dayBefore.getDate() - 1);
-    dayBefore.setHours(9, 0, 0, 0);
-    const onDay = new Date(due);
-    onDay.setHours(9, 0, 0, 0);
-    items.push(
-      { at: dayBefore, title: `${v.name} is due tomorrow`, body: `${babyName}'s vaccine is due on ${format(due, 'MMM d')}.` },
-      { at: onDay, title: `${v.name} is due today`, body: `Time for ${babyName}'s ${v.name} vaccine.` },
-    );
-  }
-  return items;
-}
 
 const todayStr = () => format(new Date(), 'dd/MM/yyyy');
 
@@ -140,7 +118,13 @@ export default function VaccinationScreen({ navigation }) {
       return;
     }
     const count = await setReminders(vaccineReminderKey(babyId), vaccineReminderItems(upcoming, baby.name));
-    if (!count && upcoming.length) {
+    if (!count && upcoming.length && !remindersAllowed(vaccineReminderKey(babyId))) {
+      // Kept on: they ring as soon as Vaccine reminders are switched on in Settings.
+      Alert.alert(
+        'Vaccine reminders are off',
+        'Turn on Vaccine reminders in Settings to hear a sound when a vaccine is due.'
+      );
+    } else if (!count && upcoming.length) {
       Alert.alert(
         'Reminders not set',
         'Allow notifications for Cradlewell Bloom in your phone settings to hear a sound when a vaccine is due.'
@@ -200,10 +184,10 @@ export default function VaccinationScreen({ navigation }) {
     return null;
   })();
   const handleAdd = async () => {
-    if (addError) return;
+    if (addError || !addOpen) return;
+    setAddOpen(false); // closes first, so a second tap cannot add the vaccine twice
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await addCustom(babyId, { name: newName, dueDate: parseDob(newDue), notes: newNotes });
-    setAddOpen(false);
     setTab('upcoming');
   };
   const handleDelete = () => {

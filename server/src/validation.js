@@ -9,8 +9,14 @@ export function normalizePhone(input) {
   if (s.startsWith('00')) s = `+${s.slice(2)}`;
   if (!s.startsWith('+')) {
     s = s.replace(/^0+/, '');
+    const cc = config.defaultCountryCode.slice(1);
+    // "919876543210": the country code typed without the "+".
+    if (cc === '91' && /^91[6-9]\d{9}$/.test(s)) s = s.slice(2);
     s = `${config.defaultCountryCode}${s}`;
   }
+  if (s.startsWith('+910')) s = `+91${s.slice(4)}`; // "+91 098765 43210"
+  // Indian mobile numbers: exactly 10 digits starting 6-9.
+  if (s.startsWith('+91')) return /^\+91[6-9]\d{9}$/.test(s) ? s : null;
   return /^\+[1-9]\d{7,14}$/.test(s) ? s : null;
 }
 

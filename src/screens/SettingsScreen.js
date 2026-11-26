@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Alert,
 } from 'react-native';
@@ -10,6 +10,11 @@ import { logout } from '../lib/session';
 import { openSwitchClient } from '../lib/switchClientFlow';
 import { hasPendingChanges } from '../lib/storage';
 import { useAuthStore } from '../store/useAuthStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { applyReminderSetting } from '../lib/reminders';
+import { PinSheet, biometricsAvailable } from '../components/AppLock';
+import { emailSupport } from './AboutScreen';
+import { APP_NAME, APP_VERSION } from '../constants/app';
 
 import { useBabyStore } from '../store/useBabyStore';
 import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
@@ -43,7 +48,25 @@ function SettingRow({ icon, color, gradient, tileBg, label, labelColor, sub, rig
   );
 }
 
-export default function SettingsScreen({ navigation }) {
+const NOTIFY_ROWS = [
+  { kind: 'health', icon: 'heart-outline', label: 'Health alerts', sub: 'Diaper colours, temperature, breathing, skin' },
+  { kind: 'care', icon: 'nutrition-outline', label: 'Care alerts', sub: 'Long gap since a feed, few wet diapers' },
+  { kind: 'medicine', icon: 'medkit-outline', label: 'Medicine reminders', sub: 'Sound when the next dose is due' },
+  { kind: 'vaccine', icon: 'shield-checkmark-outline', label: 'Vaccine reminders', sub: 'Vaccines due soon or overdue' },
+];
+
+// The pages Settings opens; the main list shows one row for each.
+const PAGES = {
+  account: { title: 'Account', sub: 'Your login and the open client' },
+  babies: { title: 'Baby profiles', sub: 'Switch, edit or add a baby' },
+  notifications: { title: 'Notifications', sub: 'What this phone shows and rings for' },
+  security: { title: 'Security', sub: 'App lock and password' },
+};
+
+export default function SettingsScreen({ navigation, route }) {
+  const page = PAGES[route?.params?.page] ? route.params.page : null;
+  // Shown as the Profile tab: no back button, room for the tab bar.
+  const isTab = route?.name === 'Profile';
   const {
     darkMode, setDarkMode,
     babies, activeBabyId, setActiveBaby,
@@ -53,6 +76,45 @@ export default function SettingsScreen({ navigation }) {
   const errorTint = darkMode ? COLORS.error + '22' : COLORS.errorLight;
   const user = useAuthStore((s) => s.user);
   const client = useAuthStore((s) => s.client);
+  const { notify, appLock, biometrics } = useSettingsStore();
+  const [canBio, setCanBio] = useState(false);
+  const [pinMode, setPinMode] = useState(null); // 'set' | 'verify' | 'change' while the PIN sheet is open
+  useEffect(() => { biometricsAvailable().then(setCanBio); }, []);
+
+  const switchProps = (value, onValueChange, label, tint = COLORS.primary) => ({
+    value,
+    onValueChange: (v) => { Haptics.selectionAsync(); onValueChange(v); },
+    trackColor: { false: darkMode ? C.border : COLORS.gray200, true: tint },
+    thumbColor: COLORS.white,
+    accessibilityLabel: label,
+  });
+
+  const toggleNotify = async (kind, on) => {
+    await useSettingsStore.getState().setNotify(kind, on);
+    // Medicine and vaccine sounds are scheduled on the phone: stop them, or set them again.
+    if (kind === 'medicine' || kind === 'vaccine') await applyReminderSetting(kind, on);
+  };
+
+  const onPinDone = async (pin) => {
+    const mode = pinMode;
+    setPinMode(null);
+    const store = useSettingsStore.getState();
+    if (mode === 'verify') {
+      await store.disableLock();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      return;
+    }
+    await store.enableLock(pin, mode === 'change' ? biometrics : false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (mode === 'set' && canBio) {
+      Alert.alert('Use fingerprint or face too?', 'Unlock the app with your fingerprint or face, and use the PIN when that does not work.', [
+        { text: 'PIN only', style: 'cancel' },
+        { text: 'Use it', onPress: () => store.setBiometrics(true) },
+      ]);
+    } else if (mode === 'change') {
+      Alert.alert('PIN changed', 'Use your new PIN to open the app.');
+    }
+  };
 
   // Changes saved offline and not yet sent would be lost when leaving the client.
   const confirmLeave = async (title, message, actionLabel, action, nextRoute) => {
@@ -105,6 +167,7 @@ export default function SettingsScreen({ navigation }) {
   };
 
   const handleDeleteBaby = (b) => {
+    if (!isClientAccount) return; // nurses can't delete a baby's data
     if (babies.length === 1) {
       Alert.alert(
         'Cannot Delete',
@@ -130,195 +193,382 @@ export default function SettingsScreen({ navigation }) {
     );
   };
 
+  const chevron = <Ionicons name="chevron-forward" size={16} color={C.textMuted} />;
+  const open = (to) => navigation.navigate('SettingsPage', { page: to });
+  const divider = <View style={[styles.divider, { backgroundColor: C.border }]} />;
+  const card = (children) => (
+    <View style={[styles.groupCard, styles.section, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
+      {children}
+    </View>
+  );
+  const isClientAccount = user?.role === 'client';
+  const activeBaby = babies.find((b) => b.id === activeBabyId);
+  const notifyOn = NOTIFY_ROWS.filter((r) => notify[r.kind] !== false).length;
+
+  // ---------- Main list ----------
+  const main = (
+    <>
+      {/* Profile: opens the Account page */}
+      <TouchableOpacity
+        onPress={() => open('account')}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel={`${user?.fullName || 'Account'}, view account`}
+      >
+        <GradientView colors={GRADIENTS.brand} style={[styles.appCard, SHADOW.lg]}>
+          <View style={styles.appIcon}>
+            <Text style={styles.profileInitial}>{(user?.fullName || '?')[0].toUpperCase()}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.appName} numberOfLines={1}>{user?.fullName || 'Signed in'}</Text>
+            <Text style={styles.appSub} numberOfLines={1}>{user?.email || (isClientAccount ? 'Parent account' : 'Nurse account')}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={COLORS.white} />
+        </GradientView>
+      </TouchableOpacity>
+
+      {card(
+        <>
+          <SettingRow
+            C={C}
+            icon="people-outline"
+            gradient
+            label="Baby profiles"
+            sub={`${babies.length} profile${babies.length === 1 ? '' : 's'}${activeBaby ? ` · ${activeBaby.name}` : ''}`}
+            onPress={() => open('babies')}
+            right={chevron}
+          />
+          {divider}
+          <SettingRow
+            C={C}
+            icon="notifications-outline"
+            gradient
+            label="Notifications"
+            sub={notifyOn === NOTIFY_ROWS.length ? 'All on' : notifyOn ? `${notifyOn} of ${NOTIFY_ROWS.length} on` : 'All off'}
+            onPress={() => open('notifications')}
+            right={chevron}
+          />
+          {divider}
+          <SettingRow
+            C={C}
+            icon="lock-closed-outline"
+            gradient
+            label="Security"
+            sub={appLock ? 'App lock on' : 'App lock off · change password'}
+            onPress={() => open('security')}
+            right={chevron}
+          />
+        </>
+      )}
+
+      {card(
+        <SettingRow
+          C={C}
+          icon="moon"
+          gradient
+          label="Dark mode"
+          sub="Night-friendly dark theme"
+          right={<Switch {...switchProps(darkMode, setDarkMode, 'Dark mode', COLORS.sleep)} />}
+        />
+      )}
+
+      {card(
+        <>
+          <SettingRow
+            C={C}
+            icon="shield-checkmark-outline"
+            gradient
+            label="Privacy policy"
+            onPress={() => navigation.navigate('PrivacyPolicy')}
+            right={chevron}
+          />
+          {divider}
+          <SettingRow
+            C={C}
+            icon="information-circle-outline"
+            gradient
+            label="About us"
+            sub={`Version ${APP_VERSION}`}
+            onPress={() => navigation.navigate('About')}
+            right={chevron}
+          />
+          {divider}
+          <SettingRow
+            C={C}
+            icon="mail-outline"
+            gradient
+            label="Contact us"
+            onPress={emailSupport}
+            right={chevron}
+          />
+        </>
+      )}
+
+      {card(
+        <SettingRow
+          C={C}
+          icon="log-out-outline"
+          color={COLORS.error}
+          tileBg={errorTint}
+          label="Log out"
+          labelColor={COLORS.error}
+          onPress={handleLogout}
+        />
+      )}
+
+      <Text style={[styles.footer, { color: C.textMuted }]}>
+        {APP_NAME} v{APP_VERSION}{'\n'}For tracking only, not medical advice. Always consult your doctor.
+      </Text>
+    </>
+  );
+
+  // ---------- Account ----------
+  const account = (
+    <>
+      {card(
+        <>
+          <SettingRow
+            C={C}
+            icon="person"
+            gradient
+            label={user?.fullName || 'Signed in'}
+            sub={user?.email}
+          />
+          {/* A parent (client account) sees only their own account; nurses also see the open client. */}
+          {isClientAccount ? null : (
+            <>
+              {divider}
+              <SettingRow
+                C={C}
+                icon="people"
+                gradient
+                label={client?.name || 'Client'}
+                sub={client?.phoneMasked ? `Verified client · ${client.phoneMasked}` : 'Verified client'}
+              />
+              {divider}
+              <SettingRow
+                C={C}
+                icon="swap-horizontal"
+                gradient
+                label="Switch client"
+                sub="Open another client's records"
+                onPress={handleSwitchClient}
+                right={chevron}
+              />
+            </>
+          )}
+          {divider}
+          <SettingRow
+            C={C}
+            icon="key-outline"
+            gradient
+            label="Change password"
+            onPress={() => navigation.navigate('ChangePassword')}
+            right={chevron}
+          />
+        </>
+      )}
+      {card(
+        <SettingRow
+          C={C}
+          icon="log-out-outline"
+          color={COLORS.error}
+          tileBg={errorTint}
+          label="Log out"
+          labelColor={COLORS.error}
+          onPress={handleLogout}
+        />
+      )}
+    </>
+  );
+
+  // ---------- Baby profiles ----------
+  const babiesPage = (
+    <>
+      {card(babies.map((b, i) => {
+        const isActive = b.id === activeBabyId;
+        return (
+          <View key={b.id}>
+            {i > 0 && divider}
+            <View style={styles.babyRow}>
+              <TouchableOpacity
+                onPress={() => setActiveBaby(b.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Switch to ${b.name}`}
+              >
+                {isActive ? (
+                  <GradientView colors={GRADIENTS.brand} style={styles.babyAvatarBtn}>
+                    <Text style={[styles.babyInitial, { color: COLORS.white }]}>{b.name?.[0]?.toUpperCase()}</Text>
+                  </GradientView>
+                ) : (
+                  <View style={[styles.babyAvatarBtn, { backgroundColor: C.border }]}>
+                    <Text style={[styles.babyInitial, { color: C.textSecondary }]}>{b.name?.[0]?.toUpperCase()}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.babyName, { color: C.text }]} numberOfLines={1}>
+                  {b.name}{isActive ? '  ✓' : ''}
+                </Text>
+                <Text style={[styles.babySub, { color: C.textSecondary }]}>
+                  {b.gender} · {b.dob}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('EditBaby', { babyId: b.id })}
+                style={[styles.editBtn, { backgroundColor: C.primaryLight }]}
+                accessibilityRole="button"
+                accessibilityLabel={`Edit ${b.name}'s profile`}
+              >
+                <Ionicons name="pencil" size={14} color={COLORS.primary} />
+                <Text style={[styles.editBtnText, { color: COLORS.primary }]}>Edit</Text>
+              </TouchableOpacity>
+              {/* Only the family can delete a baby; a nurse can edit but not delete. */}
+              {isClientAccount ? (
+                <TouchableOpacity
+                  onPress={() => handleDeleteBaby(b)}
+                  style={[styles.deleteBtn, { backgroundColor: errorTint, borderColor: COLORS.error + '33' }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Delete ${b.name}'s profile`}
+                >
+                  <Ionicons name="trash-outline" size={15} color={COLORS.error} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        );
+      }))}
+      {card(
+        <SettingRow
+          C={C}
+          icon="person-add-outline"
+          gradient
+          label="Add another baby"
+          onPress={handleResetOnboarding}
+          right={chevron}
+        />
+      )}
+      <Text style={[styles.note, { color: C.textMuted }]}>Tap a baby's initial to make them the active baby.</Text>
+    </>
+  );
+
+  // ---------- Notifications ----------
+  const notificationsPage = (
+    <>
+      {card(NOTIFY_ROWS.map((r, i) => (
+        <View key={r.kind}>
+          {i > 0 && divider}
+          <SettingRow
+            C={C}
+            icon={r.icon}
+            gradient
+            label={r.label}
+            sub={r.sub}
+            right={<Switch {...switchProps(notify[r.kind] !== false, (v) => toggleNotify(r.kind, v), r.label)} />}
+          />
+        </View>
+      )))}
+      <Text style={[styles.note, { color: C.textMuted }]}>
+        Alerts still show on the Home and Health alerts screens.
+      </Text>
+    </>
+  );
+
+  // ---------- Security ----------
+  const securityPage = (
+    <>
+      {card(
+        <>
+          <SettingRow
+            C={C}
+            icon="lock-closed-outline"
+            gradient
+            label="App lock"
+            sub={appLock ? 'PIN needed to open the app' : 'Ask for a PIN when the app opens'}
+            right={<Switch {...switchProps(appLock, (v) => setPinMode(v ? 'set' : 'verify'), 'App lock')} />}
+          />
+          {appLock && canBio ? (
+            <>
+              {divider}
+              <SettingRow
+                C={C}
+                icon="finger-print-outline"
+                gradient
+                label="Unlock with fingerprint or face"
+                sub="The PIN still works"
+                right={<Switch {...switchProps(biometrics, (v) => useSettingsStore.getState().setBiometrics(v), 'Unlock with fingerprint or face')} />}
+              />
+            </>
+          ) : null}
+          {appLock ? (
+            <>
+              {divider}
+              <SettingRow
+                C={C}
+                icon="keypad-outline"
+                gradient
+                label="Change PIN"
+                onPress={() => setPinMode('change')}
+                right={chevron}
+              />
+            </>
+          ) : null}
+        </>
+      )}
+      {card(
+        <SettingRow
+          C={C}
+          icon="key-outline"
+          gradient
+          label="Change password"
+          sub="For logging in to your account"
+          onPress={() => navigation.navigate('ChangePassword')}
+          right={chevron}
+        />
+      )}
+    </>
+  );
+
+  const body = { account, babies: babiesPage, notifications: notificationsPage, security: securityPage }[page] || main;
+  const head = page ? PAGES[page] : { title: isTab ? 'Profile' : 'Settings', sub: null };
+
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
-          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 40 },
+          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + (isTab ? 110 : 40) },
         ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            style={[styles.backBtn, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}
-          >
-            <Ionicons name="chevron-back" size={22} color={C.text} />
-          </TouchableOpacity>
+          {isTab ? null : (
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={[styles.backBtn, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="chevron-back" size={22} color={C.text} />
+            </TouchableOpacity>
+          )}
           <View style={{ flex: 1 }}>
-            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.title, { color: C.text }]}>Settings</Text>
-            <Text style={[styles.subtitle, { color: C.textSecondary }]}>Profiles, display & data</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.title, { color: C.text }]}>{head.title}</Text>
+            {head.sub ? <Text style={[styles.subtitle, { color: C.textSecondary }]}>{head.sub}</Text> : null}
           </View>
         </View>
 
-        {/* App card */}
-        <GradientView colors={GRADIENTS.brand} style={[styles.appCard, SHADOW.lg]}>
-          <View style={styles.appIcon}>
-            <Ionicons name="heart" size={24} color={COLORS.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.appName}>Cradlewell Bloom</Text>
-            <Text style={styles.appSub}>
-              {babies.length} baby profile{babies.length === 1 ? '' : 's'}
-            </Text>
-          </View>
-          <View style={styles.appChip}>
-            <Ionicons name="cloud-done" size={12} color={COLORS.white} />
-            <Text style={styles.appChipText}>Synced</Text>
-          </View>
-        </GradientView>
-
-        {/* Baby profiles */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: C.textSecondary }]}>BABY PROFILES</Text>
-          <View style={[styles.groupCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
-            {babies.map((b, i) => {
-              const isActive = b.id === activeBabyId;
-              return (
-                <View key={b.id}>
-                  {i > 0 && <View style={[styles.divider, { backgroundColor: C.border }]} />}
-                  <View style={styles.babyRow}>
-                    <TouchableOpacity
-                      onPress={() => setActiveBaby(b.id)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Switch to ${b.name}`}
-                    >
-                      {isActive ? (
-                        <GradientView colors={GRADIENTS.brand} style={styles.babyAvatarBtn}>
-                          <Text style={[styles.babyInitial, { color: COLORS.white }]}>{b.name?.[0]?.toUpperCase()}</Text>
-                        </GradientView>
-                      ) : (
-                        <View style={[styles.babyAvatarBtn, { backgroundColor: C.border }]}>
-                          <Text style={[styles.babyInitial, { color: C.textSecondary }]}>{b.name?.[0]?.toUpperCase()}</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.babyName, { color: C.text }]} numberOfLines={1}>
-                        {b.name}{isActive ? '  ✓' : ''}
-                      </Text>
-                      <Text style={[styles.babySub, { color: C.textSecondary }]}>
-                        {b.gender} · {b.dob}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => navigation.navigate('EditBaby', { babyId: b.id })}
-                      style={[styles.editBtn, { backgroundColor: C.primaryLight }]}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Edit ${b.name}'s profile`}
-                    >
-                      <Ionicons name="pencil" size={14} color={COLORS.primary} />
-                      <Text style={[styles.editBtnText, { color: COLORS.primary }]}>Edit</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => handleDeleteBaby(b)}
-                      style={[styles.deleteBtn, { backgroundColor: errorTint, borderColor: COLORS.error + '33' }]}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Delete ${b.name}'s profile`}
-                    >
-                      <Ionicons name="trash-outline" size={15} color={COLORS.error} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Display */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: C.textSecondary }]}>DISPLAY</Text>
-          <View style={[styles.groupCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
-            <SettingRow
-              C={C}
-              icon="moon"
-              gradient={GRADIENTS.sleep}
-              label="Dark Mode"
-              sub="Night-friendly dark theme"
-              right={
-                <Switch
-                  value={darkMode}
-                  onValueChange={(v) => { Haptics.selectionAsync(); setDarkMode(v); }}
-                  trackColor={{ false: darkMode ? C.border : COLORS.gray200, true: COLORS.sleep }}
-                  thumbColor={COLORS.white}
-                  accessibilityLabel="Toggle dark mode"
-                />
-              }
-            />
-          </View>
-        </View>
-
-        {/* Data */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: C.textSecondary }]}>DATA</Text>
-          <View style={[styles.groupCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
-            <SettingRow
-              C={C}
-              icon="person-add-outline"
-              gradient={GRADIENTS.brand}
-              label="Add Another Baby"
-              onPress={handleResetOnboarding}
-              right={<Ionicons name="chevron-forward" size={16} color={C.textMuted} />}
-            />
-          </View>
-        </View>
-
-        {/* Account */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: C.textSecondary }]}>ACCOUNT</Text>
-          <View style={[styles.groupCard, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>
-            <SettingRow
-              C={C}
-              icon="person"
-              gradient={GRADIENTS.brandDeep}
-              label={user?.fullName || 'Signed in'}
-              sub={user?.email}
-            />
-            <View style={[styles.divider, { backgroundColor: C.border }]} />
-            <SettingRow
-              C={C}
-              icon="people"
-              gradient={GRADIENTS.medicine}
-              label={client?.name || 'Client'}
-              sub={user?.role === 'client'
-                ? `Your records${client?.phoneMasked ? ` · ${client.phoneMasked}` : ''}`
-                : client?.phoneMasked ? `Verified client · ${client.phoneMasked}` : 'Verified client'}
-            />
-            {user?.role === 'client' ? null : (
-              <>
-                <View style={[styles.divider, { backgroundColor: C.border }]} />
-                <SettingRow
-                  C={C}
-                  icon="swap-horizontal"
-                  gradient={GRADIENTS.growth}
-                  label="Switch Client"
-                  sub="Open another client's records"
-                  onPress={handleSwitchClient}
-                  right={<Ionicons name="chevron-forward" size={16} color={C.textMuted} />}
-                />
-              </>
-            )}
-            <View style={[styles.divider, { backgroundColor: C.border }]} />
-            <SettingRow
-              C={C}
-              icon="log-out-outline"
-              color={COLORS.error}
-              tileBg={errorTint}
-              label="Log Out"
-              labelColor={COLORS.error}
-              onPress={handleLogout}
-              right={<Ionicons name="chevron-forward" size={16} color={COLORS.error} />}
-            />
-          </View>
-        </View>
-
-        <Text style={[styles.footer, { color: C.textMuted }]}>
-          Cradlewell Bloom v1.0.0{'\n'}Your comfort is our care
-        </Text>
+        {body}
       </ScrollView>
 
+      <PinSheet
+        visible={!!pinMode}
+        mode={pinMode || 'set'}
+        onDone={onPinDone}
+        onClose={() => setPinMode(null)}
+        C={C}
+      />
     </View>
   );
 }
@@ -343,14 +593,8 @@ const styles = StyleSheet.create({
   },
   appName: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy, color: COLORS.white, letterSpacing: -0.3 },
   appSub: { fontSize: FONT_SIZE.sm, marginTop: 2, color: 'rgba(255,255,255,0.9)', fontWeight: FONT_WEIGHT.medium },
-  appChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: RADIUS.full,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  appChipText: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: COLORS.white },
+  profileInitial: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.heavy, color: COLORS.primary },
   section: { marginBottom: SPACING.lg },
-  sectionTitle: { fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.heavy, letterSpacing: 1.2, marginBottom: 10, marginLeft: 4 },
   groupCard: { borderRadius: RADIUS.xl, borderWidth: 1, overflow: 'hidden' },
   babyRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, padding: SPACING.md, minHeight: 70 },
   babyAvatarBtn: { width: 44, height: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
@@ -371,5 +615,6 @@ const styles = StyleSheet.create({
   rowLabel: { fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold },
   rowSub: { fontSize: FONT_SIZE.sm, marginTop: 2 },
   divider: { height: 1, marginLeft: 76, marginRight: SPACING.md },
+  note: { fontSize: FONT_SIZE.xs, marginTop: 8, marginLeft: 4, lineHeight: 16 },
   footer: { textAlign: 'center', fontSize: FONT_SIZE.sm, marginTop: SPACING.sm, lineHeight: 20 },
 });

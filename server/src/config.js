@@ -17,6 +17,12 @@ if (env === 'production' && process.env.OTP_ENABLED === 'true' && smsProvider !=
   throw new Error('SMS_PROVIDER must be "twilio" when NODE_ENV=production and OTP_ENABLED=true');
 }
 
+// Password reset codes always go by email, so real users need a real mailbox.
+const emailProvider = (process.env.EMAIL_PROVIDER || 'console').toLowerCase();
+if (env === 'production' && emailProvider !== 'smtp') {
+  throw new Error('EMAIL_PROVIDER must be "smtp" when NODE_ENV=production');
+}
+
 export const config = {
   env,
   port: Number(process.env.PORT || 4000),
@@ -49,6 +55,24 @@ export const config = {
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS || 12),
   defaultCountryCode: process.env.DEFAULT_COUNTRY_CODE || '+91',
   rateLimit: process.env.DISABLE_RATE_LIMIT !== 'true',
+
+  // OAuth client IDs whose Google ID tokens are accepted (web, Android and iOS), comma-separated.
+  google: {
+    clientIds: (process.env.GOOGLE_CLIENT_IDS || '').split(',').map((s) => s.trim()).filter(Boolean),
+  },
+
+  email: {
+    provider: emailProvider,
+    from: process.env.EMAIL_FROM || 'Cradlewell Bloom <care@cradlewell.com>',
+    smtp: {
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT || 465),
+      // Port 465 uses TLS from the start; 587 upgrades with STARTTLS.
+      secure: (process.env.SMTP_SECURE ?? String(Number(process.env.SMTP_PORT || 465) === 465)) === 'true',
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASSWORD,
+    },
+  },
 
   sms: {
     provider: smsProvider,

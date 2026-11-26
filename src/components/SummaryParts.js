@@ -5,7 +5,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS } from '../constants/colors';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, SHADOW } from '../constants/theme';
 
-/** A titled card used by the daily and 30-day summaries. */
+/** A titled card used by the daily and monthly summaries. */
 export function SummaryBlock({ icon, mci, color, bg, title, children, C }) {
   return (
     <View style={[styles.block, { backgroundColor: C.card, borderColor: C.border }, SHADOW.sm]}>

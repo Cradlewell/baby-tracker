@@ -30,9 +30,19 @@ const appHost = process.env.DB_APP_USER_HOST || 'localhost';
 const MIGRATIONS = {
   '01_auth.sql': [
     { table: 'users', column: 'role', ddl: "ADD COLUMN role ENUM('nurse', 'client') NOT NULL DEFAULT 'nurse' AFTER verification_status" },
+    { table: 'users', column: 'google_sub', ddl: 'ADD COLUMN google_sub VARCHAR(64) NULL AFTER role' },
   ],
   '02_clients.sql': [
     { table: 'clients', column: 'user_id', ddl: 'ADD COLUMN user_id BIGINT UNSIGNED NULL AFTER phone, ADD KEY idx_clients_user (user_id)' },
+  ],
+};
+
+// Changes that are safe to run every time (they set a column to its current definition).
+const ALWAYS = {
+  '01_auth.sql': [
+    "ALTER TABLE otp_codes MODIFY COLUMN purpose ENUM('registration', 'client_access', 'password_reset') NOT NULL",
+    // Password reset codes are sent to an email address, which is longer than a phone number.
+    "ALTER TABLE otp_codes MODIFY COLUMN phone VARCHAR(255) NOT NULL COMMENT 'phone number or email address the code was sent to'",
   ],
 };
 
@@ -66,6 +76,7 @@ for (const db of databases) {
   await admin.changeUser({ database: db.name });
   await admin.query(sql);
   for (const m of MIGRATIONS[db.schema] || []) await addColumnIfMissing(db.name, m);
+  for (const ddl of ALWAYS[db.schema] || []) await admin.query(ddl);
   console.log(`✓ ${db.name}: tables ready, user ${db.user}@${appHost} has data access`);
 }
 

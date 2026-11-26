@@ -7,6 +7,7 @@ import { useBabyStore } from '../store/useBabyStore';
 import { useMedicineStore, upcomingDoses } from '../store/useMedicineStore';
 import { useVaccinationStore } from '../store/useVaccinationStore';
 import { useHealthCheck } from './useHealthCheck';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 const MIN = 60000;
 const EMPTY = [];
@@ -14,6 +15,10 @@ const EMPTY = [];
 // Which notifications count as which tab. Everything that isn't a reminder is a health or care alert.
 const REMINDER_IDS = /^(dose-|vaccines$|med-due-|vacc-due-)/;
 const CARE_IDS = /^(feed-gap|feeds-low|no-wet|wet-gap|wet-low)$/;
+const VACCINE_IDS = /^(vaccines$|vacc-due-)/;
+
+// The Settings switch a notification belongs to: health, care, medicine or vaccine.
+export const settingOf = (n) => (n.kind === 'reminder' ? (VACCINE_IDS.test(n.id) ? 'vaccine' : 'medicine') : n.kind);
 
 /**
  * The bell's list for one baby: today's health check alerts (health and care gaps, late doses,
@@ -88,12 +93,15 @@ export function useNotifications() {
   const medicines = useMedicineStore((s) => s.logs[babyId]) || EMPTY;
   const vaccines = useVaccinationStore((s) => s.records[babyId]) || EMPTY;
   const readList = useNotificationReadStore((s) => s.read[babyId]) || EMPTY;
+  const notify = useSettingsStore((s) => s.notify);
 
   useEffect(() => { useNotificationReadStore.getState().load(); }, []);
 
   return useMemo(() => {
     const read = new Set(readList);
+    // Kinds switched off in Settings are left out of the list and the badge.
     const items = buildNotifications({ alerts, medicines, vaccines })
+      .filter((n) => notify[settingOf(n)] !== false)
       .map((n) => ({ ...n, unread: !read.has(n.key) }));
     const unread = items.filter((n) => n.unread);
     return {
@@ -104,5 +112,5 @@ export function useNotifications() {
       markRead: (keys) => useNotificationReadStore.getState().markRead(babyId, keys),
       markAllRead: () => useNotificationReadStore.getState().markRead(babyId, items.map((n) => n.key)),
     };
-  }, [babyId, alerts, medicines, vaccines, readList]);
+  }, [babyId, alerts, medicines, vaccines, readList, notify]);
 }

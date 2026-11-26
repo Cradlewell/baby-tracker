@@ -117,6 +117,9 @@ async function getItem(key) {
     }
     try {
       const { items } = await api.get(r.path);
+      // Something was saved on this phone while the download was in flight: the local copy is
+      // newer, and it is about to be sent. Keep it rather than the server's older list.
+      if (await AsyncStorage.getItem(pendingKey(key))) return AsyncStorage.getItem(cacheKey(key));
       const json = JSON.stringify(items);
       await AsyncStorage.setItem(cacheKey(key), json);
       await saveSynced(key, items);

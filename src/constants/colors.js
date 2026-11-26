@@ -128,19 +128,32 @@ export const GRADIENTS = {
   night: [NAVY, '#11131C'],
 };
 
-// Chart series, from the brand palette only: purple, blue, a light blue tint and navy.
-// Paired series (left/right breast, sleep/awake) use a dark and a light colour so they stay
-// apart even in black-and-white print.
+// Chart series (chosen palette): lavender and mint for left / right breast, blue for bottle
+// milk, soft purple and amber for sleep / awake, aqua for urine and light green for dry. Each pair differs in hue and
+// lightness, so it stays clear with colour blindness and in black-and-white print.
+// The *Text shades are darker versions of the same colours for readable text on white.
+// Diaper colours (wet / stool / both / dry) are only fallbacks: dots use the logged colour.
+const CHART_PURPLE = '#7E61C9';
+const CHART_BLUE = '#4A8FD6';
+const CHART_AMBER = '#E0A040';
 export const CHART_COLORS = {
-  left: BRAND_PURPLE,
-  right: '#A8B8FF',
-  bottle: BRAND_BLUE,
-  sleep: BRAND_PURPLE,
-  awake: '#A8B8FF',
-  wet: BRAND_BLUE,
+  left: '#927BD3',
+  right: '#55BFA3',
+  leftText: '#6F58B8',
+  rightText: '#2E8A71',
+  bottle: CHART_BLUE,
+  bottleText: '#2C6CB0',
+  sleep: CHART_PURPLE,
+  sleepText: '#6A4DB8',
+  awake: CHART_AMBER,
+  awakeText: '#B36F14',
+  wet: '#40BBC9', // urine
+  wetText: '#1F8A97',
   stool: NAVY,
   stoolDark: '#C9CCE0', // stool on a dark card
   both: BRAND_PURPLE,
+  dry: '#B8D780', // checked and dry
+  dryText: '#6B8F2E',
 };
 
 // Kept unchanged on purpose: the Home "Quick log" tiles stay exactly as they were

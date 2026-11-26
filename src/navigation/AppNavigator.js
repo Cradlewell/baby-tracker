@@ -1,12 +1,13 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, AppState } from 'react-native';
-import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef, StackActions } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useBabyStore } from '../store/useBabyStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { COLORS, DARK_COLORS, GRADIENTS } from '../constants/colors';
 import GradientView from '../components/GradientView';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SHADOW, TIGHT_TEXT } from '../constants/theme';
@@ -14,11 +15,8 @@ import { FONT_SIZE, FONT_WEIGHT, RADIUS, SHADOW, TIGHT_TEXT } from '../constants
 import SplashScreen from '../screens/SplashScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import HomeScreen from '../screens/HomeScreen';
-import FeedingScreen from '../screens/FeedingScreen';
-import SleepScreen from '../screens/SleepScreen';
-import GrowthScreen from '../screens/GrowthScreen';
-import MoreScreen from '../screens/MoreScreen';
-import DiaperScreen from '../screens/DiaperScreen';
+import HealthScreen from '../screens/HealthScreen';
+import TrackTabs, { TRACK_SCREENS } from './TrackTabs';
 import MedicineScreen from '../screens/MedicineScreen';
 import VaccinationScreen from '../screens/VaccinationScreen';
 import SummaryScreen from '../screens/SummaryScreen';
@@ -34,8 +32,13 @@ import SkinScreen from '../screens/SkinScreen';
 import MilestonesScreen from '../screens/MilestonesScreen';
 import HealthAlertsScreen from '../screens/HealthAlertsScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
+import ChangePasswordScreen from '../screens/ChangePasswordScreen';
+import GoogleSignupScreen from '../screens/GoogleSignupScreen';
+import AboutScreen, { PrivacyPolicyScreen } from '../screens/AboutScreen';
 import { setUnauthorizedHandler } from '../lib/api';
-import { handleSessionLost } from '../lib/session';
+import { handleSessionLost, logout } from '../lib/session';
+import { LockScreen } from '../components/AppLock';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { flushPending } from '../lib/storage';
 
 const Stack = createStackNavigator();
@@ -59,20 +62,40 @@ async function onSessionLost(err) {
     handlingSessionLoss = false;
   }
 }
+async function forgotPin() {
+  await logout();
+  useSettingsStore.getState().unlock();
+  if (navigationRef.isReady()) navigationRef.reset({ index: 0, routes: [{ name: 'Login' }] });
+}
+
 const Tab = createBottomTabNavigator();
+
+/**
+ * Feed, Sleep, Diaper and Growth live in the Track tab. Anything that opens them by name
+ * (Home's Quick log, alerts, notifications) lands on this stand-in, which goes back to the
+ * tabs and opens that screen in Track.
+ */
+function OpenInTrack({ route }) {
+  useEffect(() => {
+    navigationRef.dispatch(StackActions.popTo('Main'));
+    navigationRef.navigate('Main', { screen: 'Track', params: { screen: route.name } });
+  }, []);
+  return null;
+}
 
 function TabBar({ state, navigation }) {
   const darkMode = useBabyStore((s) => s.darkMode);
   const C = darkMode ? DARK_COLORS : COLORS;
   const insets = useSafeAreaInsets();
 
-  const tabs = [
-    { name: 'Home', label: 'Home', icon: 'home-outline', iconActive: 'home' },
-    { name: 'Feeding', label: 'Feed', icon: 'nutrition-outline', iconActive: 'nutrition' },
-    { name: 'Sleep', label: 'Sleep', icon: 'moon-outline', iconActive: 'moon' },
-    { name: 'Reports', label: 'Reports', icon: 'bar-chart-outline', iconActive: 'bar-chart' },
-    { name: 'More', label: 'More', icon: 'grid-outline', iconActive: 'grid' },
-  ];
+  const initial = useAuthStore((s) => s.user?.fullName?.trim()?.[0]?.toUpperCase());
+  const tabs = {
+    Home: { label: 'Home', icon: 'home-outline', iconActive: 'home' },
+    Track: { label: 'Track', icon: 'add-circle-outline', iconActive: 'add-circle' },
+    Reports: { label: 'Reports', icon: 'bar-chart-outline', iconActive: 'bar-chart' },
+    Health: { label: 'Health', icon: 'heart-outline', iconActive: 'heart' },
+    Profile: { label: 'Profile', icon: 'person-circle-outline', iconActive: 'person-circle' },
+  };
 
   return (
     <View
@@ -84,7 +107,7 @@ function TabBar({ state, navigation }) {
     >
       {state.routes.map((route, index) => {
         const isFocused = state.index === index;
-        const tab = tabs[index];
+        const tab = tabs[route.name];
 
         return (
           <TouchableOpacity
@@ -107,7 +130,13 @@ function TabBar({ state, navigation }) {
           >
             {isFocused ? (
               <GradientView colors={GRADIENTS.brand} style={styles.activePill}>
-                <Ionicons name={tab.iconActive} size={20} color={COLORS.white} />
+                {route.name === 'Profile' && initial ? (
+                  <View style={styles.initialDot}>
+                    <Text style={styles.initialText}>{initial}</Text>
+                  </View>
+                ) : (
+                  <Ionicons name={tab.iconActive} size={20} color={COLORS.white} />
+                )}
                 <Text style={styles.activeLabel} numberOfLines={1} adjustsFontSizeToFit {...TIGHT_TEXT}>{tab.label}</Text>
               </GradientView>
             ) : (
@@ -130,10 +159,10 @@ function MainTabs() {
       screenOptions={{ headerShown: false }}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Feeding" component={FeedingScreen} />
-      <Tab.Screen name="Sleep" component={SleepScreen} />
+      <Tab.Screen name="Track" component={TrackTabs} />
       <Tab.Screen name="Reports" component={SummaryScreen} />
-      <Tab.Screen name="More" component={MoreScreen} />
+      <Tab.Screen name="Health" component={HealthScreen} />
+      <Tab.Screen name="Profile" component={SettingsScreen} />
     </Tab.Navigator>
   );
 }
@@ -143,6 +172,7 @@ export default function AppNavigator() {
   const C = darkMode ? DARK_COLORS : COLORS;
 
   useEffect(() => {
+    useSettingsStore.getState().load();
     setUnauthorizedHandler(onSessionLost);
     // Send changes made offline whenever the app comes back to the foreground.
     const sub = AppState.addEventListener('change', (state) => {
@@ -161,23 +191,32 @@ export default function AppNavigator() {
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Register" component={RegisterScreen} />
         <Stack.Screen name="VerifyOtp" component={VerifyOtpScreen} />
+        <Stack.Screen name="GoogleSignup" component={GoogleSignupScreen} />
         <Stack.Screen name="ClientVerify" component={ClientVerifyScreen} />
         <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         <Stack.Screen name="Main" component={MainTabs} />
-        <Stack.Screen name="Diaper" component={DiaperScreen} options={{ presentation: 'modal' }} />
         <Stack.Screen name="Medicine" component={MedicineScreen} options={{ presentation: 'modal' }} />
         <Stack.Screen name="Vaccination" component={VaccinationScreen} options={{ presentation: 'modal' }} />
         <Stack.Screen name="Summary" component={SummaryScreen} options={{ presentation: 'modal' }} />
         <Stack.Screen name="Settings" component={SettingsScreen} options={{ presentation: 'modal' }} />
+        {/* Settings' own pages (account, babies, notifications, security). */}
+        <Stack.Screen name="SettingsPage" component={SettingsScreen} />
         <Stack.Screen name="EditBaby" component={EditBabyScreen} options={{ presentation: 'modal' }} />
-        <Stack.Screen name="Growth" component={GrowthScreen} />
         <Stack.Screen name="Temperature" component={TemperatureScreen} />
         <Stack.Screen name="Breathing" component={BreathingScreen} />
         <Stack.Screen name="Skin" component={SkinScreen} />
         <Stack.Screen name="Milestones" component={MilestonesScreen} />
         <Stack.Screen name="HealthAlerts" component={HealthAlertsScreen} />
         <Stack.Screen name="Notifications" component={NotificationsScreen} />
+        <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+        <Stack.Screen name="About" component={AboutScreen} />
+        <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+        {TRACK_SCREENS.map((t) => (
+          <Stack.Screen key={t.name} name={t.name} component={OpenInTrack} options={{ animation: 'none' }} />
+        ))}
       </Stack.Navigator>
+      {/* App lock: covers everything while locked; "Forgot PIN" logs out. */}
+      <LockScreen onForgot={forgotPin} />
     </NavigationContainer>
   );
 }
@@ -218,6 +257,11 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xs,
     fontWeight: FONT_WEIGHT.bold,
   },
+  initialDot: {
+    width: 22, height: 22, borderRadius: 11, backgroundColor: COLORS.white,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  initialText: { fontSize: 12, fontWeight: '800', color: COLORS.primary },
   idleItem: {
     alignItems: 'center',
     justifyContent: 'center',

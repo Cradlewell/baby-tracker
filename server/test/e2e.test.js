@@ -3,6 +3,8 @@
 // SMS go to an in-memory outbox; every user and client the test creates is deleted afterwards.
 process.env.OTP_ENABLED = 'true';
 process.env.SMS_PROVIDER = 'memory';
+process.env.EMAIL_PROVIDER = 'memory';
+process.env.GOOGLE_CLIENT_IDS = 'test-client.apps.googleusercontent.com';
 process.env.DISABLE_RATE_LIMIT = 'true';
 process.env.OTP_RESEND_COOLDOWN_SECONDS = '0';
 process.env.NODE_ENV = 'test';
@@ -13,6 +15,10 @@ import assert from 'node:assert/strict';
 const { createApp } = await import('../src/app.js');
 const { authDb, clientsDb, closePools } = await import('../src/db.js');
 const { memoryOutbox } = await import('../src/sms.js');
+const { memoryMailbox } = await import('../src/email.js');
+const { setGoogleVerifierForTests } = await import('../src/google.js');
+const { badRequest } = await import('../src/errors.js');
+const { normalizePhone } = await import('../src/validation.js');
 
 let server;
 let base;
@@ -268,11 +274,20 @@ test('full flow: login -> client phone -> client OTP -> view, add and edit recor
   await call('DELETE', '/data/babies', { token: tokenB });
   assert.equal((await call('GET', '/data/babies', { token })).body.items.length, 1, "B's clear-all did not touch X");
 
-  // Deleting a baby deletes its records too.
+  // A nurse can never delete a baby's data: not a baby, not all babies, not a whole record list.
   const temp = { id: `tmp${uniq}`, name: 'Temp' };
   await call('PATCH', '/data/babies', { token, body: { upsert: [temp], order: [baby.id, temp.id] } });
   await call('PATCH', `/data/babies/${temp.id}/records/sleep`, { token, body: { upsert: [{ id: `s${uniq}` }] } });
-  await call('PATCH', '/data/babies', { token, body: { delete: [temp.id], order: [baby.id] } });
+  const noDel = await call('PATCH', '/data/babies', { token, body: { delete: [temp.id], order: [baby.id] } });
+  assert.equal(noDel.status, 403);
+  assert.equal(noDel.body.error.code, 'nurse_cannot_delete');
+  assert.equal((await call('DELETE', '/data/babies', { token })).status, 403);
+  assert.equal((await call('DELETE', `/data/babies/${temp.id}/records/sleep`, { token })).status, 403);
+  assert.equal((await call('GET', '/data/babies', { token })).body.items.length, 2, 'nothing was deleted');
+  assert.equal((await call('GET', `/data/babies/${temp.id}/records/sleep`, { token })).body.items.length, 1);
+
+  // Deleting a baby (as the family does) deletes its records too.
+  await clientsDb.query('DELETE FROM babies WHERE id = ?', [temp.id]);
   const [orphans] = await clientsDb.query('SELECT 1 FROM monitoring_records WHERE baby_id = ?', [temp.id]);
   assert.equal(orphans.length, 0);
 
@@ -305,4 +320,162 @@ test('session tokens are stored hashed', async () => {
   const token = await login(emailA);
   const [rows] = await authDb.query('SELECT token_hash FROM sessions WHERE token_hash = ?', [token]);
   assert.equal(rows.length, 0);
+});
+
+test('change password: needs the current one, signs out other phones, keeps this one', async () => {
+  const email = `carol+e2e${uniq}@example.com`;
+  await registerAndVerify({ email, phone: phone() });
+  const token = await login(email);
+  const other = await login(email);
+
+  const wrongCurrent = await call('POST', '/auth/password', {
+    token, body: { currentPassword: 'nope12345', newPassword: 'NewPassw0rd', confirmPassword: 'NewPassw0rd' },
+  });
+  assert.equal(wrongCurrent.status, 400);
+  assert.equal(wrongCurrent.body.error.code, 'wrong_password');
+
+  const weak = await call('POST', '/auth/password', {
+    token, body: { currentPassword: 'Passw0rd!', newPassword: 'short', confirmPassword: 'short' },
+  });
+  assert.equal(weak.body.error.code, 'weak_password');
+
+  const same = await call('POST', '/auth/password', {
+    token, body: { currentPassword: 'Passw0rd!', newPassword: 'Passw0rd!', confirmPassword: 'Passw0rd!' },
+  });
+  assert.equal(same.body.error.code, 'same_password');
+
+  const ok = await call('POST', '/auth/password', {
+    token, body: { currentPassword: 'Passw0rd!', newPassword: 'NewPassw0rd', confirmPassword: 'NewPassw0rd' },
+  });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+
+  assert.equal((await call('GET', '/auth/me', { token })).status, 200, 'this phone stays signed in');
+  assert.equal((await call('GET', '/auth/me', { token: other })).status, 401, 'other phones are signed out');
+  const oldPw = await call('POST', '/auth/login', { body: { email, password: 'Passw0rd!' } });
+  assert.equal(oldPw.status, 401);
+  await login(email, 'NewPassw0rd');
+});
+
+test('forgot password: code by email, new password, every phone signed out', async () => {
+  const email = `dave+e2e${uniq}@example.com`;
+  const ph = phone();
+  await registerAndVerify({ email, phone: ph });
+  const token = await login(email);
+
+  const unknown = await call('POST', '/auth/password/forgot', { body: { email: `nobody${uniq}@example.com` } });
+  assert.equal(unknown.status, 404);
+
+  const smsBefore = memoryOutbox.length;
+  const sent = await call('POST', '/auth/password/forgot', { body: { email: email.toUpperCase() } });
+  assert.equal(sent.status, 200, JSON.stringify(sent.body));
+  assert.equal(sent.body.email, email);
+  const mail = [...memoryMailbox].reverse().find((m) => m.to === email);
+  assert.ok(mail, 'the code is emailed');
+  assert.match(mail.subject, /password reset code/);
+  assert.equal(memoryOutbox.length, smsBefore, 'no SMS is sent');
+  const code = /\b(\d{6})\b/.exec(mail.text)[1];
+
+  const bad = await call('POST', '/auth/password/reset', {
+    body: { email, otp: wrong(code), newPassword: 'Fresh1234', confirmPassword: 'Fresh1234' },
+  });
+  assert.equal(bad.body.error.code, 'otp_incorrect');
+
+  const weak = await call('POST', '/auth/password/reset', {
+    body: { email, otp: code, newPassword: 'short', confirmPassword: 'short' },
+  });
+  assert.equal(weak.body.error.code, 'weak_password');
+
+  const ok = await call('POST', '/auth/password/reset', {
+    body: { email, otp: code, newPassword: 'Fresh1234', confirmPassword: 'Fresh1234' },
+  });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+
+  assert.equal((await call('GET', '/auth/me', { token })).status, 401, 'old sessions signed out');
+  assert.equal((await call('POST', '/auth/login', { body: { email, password: 'Passw0rd!' } })).status, 401);
+  await login(email, 'Fresh1234');
+
+  const reused = await call('POST', '/auth/password/reset', {
+    body: { email, otp: code, newPassword: 'Again1234', confirmPassword: 'Again1234' },
+  });
+  assert.equal(reused.body.error.code, 'otp_not_found', 'a code works only once');
+});
+
+test('continue with Google: existing account signs in, new person gives a phone number', async () => {
+  // Stand-in for Google: "good:<email>:<name>" is a valid token for that verified email.
+  setGoogleVerifierForTests(async (t) => {
+    const [kind, email, name] = String(t).split(':');
+    if (kind === 'unverified') return { sub: 'g-' + email, email, email_verified: false, name };
+    if (kind !== 'good') throw badRequest('invalid_google_token', 'Google sign-in failed. Please try again.');
+    return { sub: 'g-' + email, email, email_verified: true, name };
+  });
+  try {
+    // Existing nurse account: signs straight in.
+    const email = `erin+e2e${uniq}@example.com`;
+    await registerAndVerify({ email, phone: phone() });
+    const oldToken = await login(email);
+    const r = await call('POST', '/auth/google', { body: { idToken: `good:${email.toUpperCase()}:Erin`, role: 'nurse' } });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    // First Google sign-in: whoever registered this email with a password is locked out.
+    assert.equal((await call('GET', '/auth/me', { token: oldToken })).status, 401);
+    assert.equal((await call('POST', '/auth/login', { body: { email, password: 'Passw0rd!' } })).status, 401);
+    assert.ok(r.body.token);
+    assert.equal(r.body.user.email, email);
+    assert.equal((await call('GET', '/auth/me', { token: r.body.token })).status, 200);
+    const wrongRole = await call('POST', '/auth/google', { body: { idToken: `good:${email}:Erin`, role: 'client' } });
+    assert.equal(wrongRole.body.error.code, 'wrong_role');
+
+    // Bad or unverified Google accounts are refused.
+    assert.equal((await call('POST', '/auth/google', { body: { idToken: 'forged', role: 'nurse' } })).status, 400);
+    const unv = await call('POST', '/auth/google', { body: { idToken: `unverified:x${uniq}@example.com:X`, role: 'nurse' } });
+    assert.equal(unv.body.error.code, 'google_email_unverified');
+
+    // New person: ticket, then phone number. Codes are on in this test file, so the phone gets one.
+    const newEmail = `fay+e2e${uniq}@example.com`;
+    const first = await call('POST', '/auth/google', { body: { idToken: `good:${newEmail}:Fay Rao`, role: 'client' } });
+    assert.equal(first.body.needsSignup, true);
+    assert.equal(first.body.fullName, 'Fay Rao');
+    const tampered = first.body.signupToken.replace(/^./, (c) => (c === 'e' ? 'f' : 'e'));
+    const bad = await call('POST', '/auth/google/signup', { body: { signupToken: tampered, phone: phone(), role: 'client' } });
+    assert.equal(bad.body.error.code, 'google_signup_expired');
+
+    const ph = phone();
+    const made = await call('POST', '/auth/google/signup', { body: { signupToken: first.body.signupToken, phone: ph, role: 'client' } });
+    assert.equal(made.status, 201, JSON.stringify(made.body));
+    assert.ok(made.body.token, 'signed in straight away, no SMS code');
+    assert.ok(made.body.client, 'a parent opens their own records');
+    const [rows] = await authDb.query('SELECT id, google_sub, phone, verification_status FROM users WHERE email = ?', [newEmail]);
+    createdUserIds.push(rows[0].id);
+    assert.equal(rows[0].google_sub, 'g-' + newEmail);
+    assert.equal(rows[0].verification_status, 'verified');
+    assert.ok(rows[0].phone, 'phone number saved');
+    // Next time: no phone question, straight in.
+    const again = await call('POST', '/auth/google', { body: { idToken: `good:${newEmail}:Fay Rao`, role: 'client' } });
+    assert.equal(again.status, 200, JSON.stringify(again.body));
+    assert.ok(!again.body.needsSignup);
+    assert.ok(again.body.client);
+    const [crows] = await clientsDb.query('SELECT id FROM clients WHERE user_id = ?', [rows[0].id]);
+    crows.forEach((c) => createdClientIds.push(c.id));
+  } finally {
+    setGoogleVerifierForTests(null);
+  }
+});
+
+test('phone numbers typed in common Indian forms become one number', () => {
+  for (const p of ['9876543210', '919876543210', '+91 09876543210', '098765 43210', '0091 98765 43210', '+91-98765-43210']) {
+    assert.equal(normalizePhone(p), '+919876543210', p);
+  }
+  for (const p of ['8765432', '5876543210', '+9112345678901', '98765432101']) assert.equal(normalizePhone(p), null, p);
+  assert.equal(normalizePhone('+1 415 555 0100'), '+14155550100');
+});
+
+test('a double-tapped sign-up makes one account and never a server error', async () => {
+  const email = `dbl+e2e${uniq}@example.com`;
+  const ph = phone();
+  const body = { fullName: 'Double Tap', phone: ph, email, password: 'Passw0rd!', confirmPassword: 'Passw0rd!' };
+  const results = await Promise.all([1, 2, 3, 4].map(() => call('POST', '/auth/register', { body })));
+  const [rows] = await authDb.query('SELECT id FROM users WHERE email = ?', [email]);
+  rows.forEach((r) => createdUserIds.push(r.id));
+  for (const r of results) assert.ok([201, 409, 429].includes(r.status), `${r.status} ${JSON.stringify(r.body)}`);
+  assert.ok(results.some((r) => r.status === 201));
+  assert.equal(rows.length, 1);
 });

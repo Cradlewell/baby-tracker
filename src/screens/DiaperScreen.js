@@ -7,7 +7,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
 import { useBabyStore } from '../store/useBabyStore';
-import { useDiaperStore, URINE_COLORS, STOOL_COLORS, findColor } from '../store/useDiaperStore';
+import { useDiaperStore, STOOL_COLORS, findColor, URINE_COLOUR, urineColourOf } from '../store/useDiaperStore';
 import { COLORS } from '../constants/colors';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING, fs } from '../constants/theme';
 
@@ -125,6 +125,8 @@ export default function DiaperScreen({ navigation }) {
   const babyId = baby?.id;
   const S = darkMode ? SHOT_DARK : SHOT_LIGHT;
   const insets = useSafeAreaInsets();
+  // Inside the Track tab: no back button, room for the tab bar.
+  const inTrack = navigation.getState?.()?.type === 'tab';
 
   // Semantic tints that stay readable in dark mode.
   const successTint = darkMode ? tint(COLORS.success) : COLORS.successLight;
@@ -136,10 +138,8 @@ export default function DiaperScreen({ navigation }) {
   // ─── form state ───
   const [step, setStep] = useState(null); // null | 'confirm'
   const [eventType, setEventType] = useState(null);
-  const [eventTime, setEventTime] = useState(new Date());
-  const [eventTimeStr, setEventTimeStr] = useState('');
-  const [changed, setChanged] = useState(null); // true | false | null
-  const [urineColor, setUrineColor] = useState(null);
+  // Every logged diaper is changed, so there is no Yes / No question; only the change time is asked.
+  const changed = true;
   const [stoolColor, setStoolColor] = useState(null);
   const [changeTime, setChangeTime] = useState(new Date());
   const [changeTimeStr, setChangeTimeStr] = useState('');
@@ -147,6 +147,10 @@ export default function DiaperScreen({ navigation }) {
 
   useEffect(() => {
     if (babyId) load(babyId);
+    // A different baby (twins): a half-filled entry belonged to the previous one.
+    setStep(null);
+    setEventType(null);
+    setStoolColor(null);
   }, [babyId]);
 
   // ─── today stats ───
@@ -156,17 +160,11 @@ export default function DiaperScreen({ navigation }) {
     const wetCount   = tl.filter((l) => l.eventType === 'urine' || l.eventType === 'both').length;
     const stoolCount = tl.filter((l) => l.eventType === 'stool' || l.eventType === 'both').length;
     const dryCount   = tl.filter((l) => l.eventType === 'dry').length;
-    const delays = tl
-      .filter((l) => l.changed && l.changeTime && l.eventTime)
-      .map((l) => Math.round((new Date(l.changeTime) - new Date(l.eventTime)) / 60000));
-    const avgDelay = delays.length
-      ? Math.round(delays.reduce((a, b) => a + b, 0) / delays.length)
-      : null;
     // Today's entries whose colour may need the doctor's attention.
     const colorAlerts = tl.filter((l) =>
-      findColor(URINE_COLORS, l.urineColor)?.warn || findColor(STOOL_COLORS, l.stoolColor)?.warn
+      urineColourOf(l)?.warn || findColor(STOOL_COLORS, l.stoolColor)?.warn
     ).length;
-    return { wetCount, stoolCount, dryCount, avgDelay, total: tl.length, colorAlerts };
+    return { wetCount, stoolCount, dryCount, total: tl.length, colorAlerts };
   }, [logs]);
 
   // ─── actions ───
@@ -174,12 +172,8 @@ export default function DiaperScreen({ navigation }) {
     Haptics.selectionAsync();
     const now = new Date();
     setEventType(type);
-    setEventTime(now);
-    setEventTimeStr(fmtTime(now));
     setChangeTime(now);
     setChangeTimeStr(fmtTime(now));
-    setChanged(null);
-    setUrineColor(null);
     setStoolColor(null);
     setStep('confirm');
   };
@@ -194,42 +188,30 @@ export default function DiaperScreen({ navigation }) {
   };
 
   const [saving, setSaving] = useState(false);
-  const evParsed = parseTimeStr(eventTimeStr);
-  const chParsed = changed ? parseTimeStr(changeTimeStr) : null;
-  const timeError = !evParsed
-    ? 'Enter the time like 9:05 PM'
-    : changed && !chParsed
-    ? 'Enter the change time like 9:10 PM'
-    : changed && chParsed < evParsed
-    ? 'Change time cannot be before the diaper event'
-    : null;
+  // One time only: when the diaper was changed. It is also saved as the diaper's time.
+  const chParsed = parseTimeStr(changeTimeStr);
+  const timeError = !chParsed ? 'Enter the time like 9:10 PM' : null;
 
-  const cannotSave = changed === null || !!timeError || saving;
+  const cannotSave = !!timeError || saving;
 
   const handleSave = async () => {
-    if (changed === null || timeError || saving) return;
+    if (timeError || saving) return;
     setSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    const evTime = evParsed;
-    const chTime = chParsed;
-    const delayMinutes = (changed && chTime)
-      ? Math.max(0, Math.round((chTime - evTime) / 60000))
-      : null;
-
     await addLog(babyId, {
       eventType,
-      eventTime: evTime.toISOString(),
+      eventTime: chParsed.toISOString(),
       changed,
-      changeTime: chTime?.toISOString() || null,
-      delayMinutes,
-      urineColor: hasUrine(eventType) ? urineColor : null,
+      changeTime: chParsed.toISOString(),
+      delayMinutes: null,
+      // Urine colour is not asked: wet diapers are recorded as clear / pale.
+      urineColor: hasUrine(eventType) ? URINE_COLOUR : null,
       stoolColor: hasStool(eventType) ? stoolColor : null,
     });
 
     setStep(null);
     setEventType(null);
-    setChanged(null);
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -242,22 +224,24 @@ export default function DiaperScreen({ navigation }) {
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
-          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 48 },
+          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + (inTrack ? 110 : 48) },
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
         {/* ── Header ── */}
         <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={[styles.headerBtn, { backgroundColor: S.tile }]}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="arrow-back" size={22} color={S.blue} />
-          </TouchableOpacity>
+          {inTrack ? null : (
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={[styles.headerBtn, { backgroundColor: S.tile }]}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="arrow-back" size={22} color={S.blue} />
+            </TouchableOpacity>
+          )}
           <View style={{ flex: 1 }}>
             <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.title, { color: S.text }]}>Diaper Log</Text>
             <Text style={[styles.subtitle, { color: S.textSecondary }]}>Urine, stool & changes</Text>
@@ -289,12 +273,6 @@ export default function DiaperScreen({ navigation }) {
             <HeroChip mci="water-outline" value={stats.wetCount} label="wet" S={S} />
             <HeroChip mci="emoticon-poop-outline" value={stats.stoolCount} label="stool" S={S} />
             <HeroChip mci="white-balance-sunny" value={stats.dryCount} label="dry" S={S} />
-            <HeroChip
-              icon="time-outline"
-              value={stats.avgDelay !== null ? `${stats.avgDelay}m` : '--'}
-              label="avg delay"
-              S={S}
-            />
           </View>
         </View>
 
@@ -348,72 +326,13 @@ export default function DiaperScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            {/* Event time */}
-            <View style={styles.section}>
-              <Text style={[styles.sectionLbl, { color: S.textSecondary }]}>WHEN DID IT HAPPEN?</Text>
-              <View style={styles.timeRow}>
-                <TouchableOpacity
-                  onPress={() => adjustTime(setEventTime, setEventTimeStr, eventTimeStr, eventTime, -5)}
-                  style={[styles.adjBtn, { backgroundColor: S.tile }]}
-                >
-                  <Text style={[styles.adjText, { color: S.text }]}>−5m</Text>
-                </TouchableOpacity>
-                <TextInput
-                  style={[styles.timeInput, { color: S.text, backgroundColor: S.surface, borderColor: S.border }]}
-                  value={eventTimeStr}
-                  onChangeText={setEventTimeStr}
-                  selectTextOnFocus
-                />
-                <TouchableOpacity
-                  onPress={() => adjustTime(setEventTime, setEventTimeStr, eventTimeStr, eventTime, 5)}
-                  style={[styles.adjBtn, { backgroundColor: S.tile }]}
-                >
-                  <Text style={[styles.adjText, { color: S.text }]}>+5m</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Colours (optional) */}
-            {hasUrine(eventType) && (
-              <ColorPicker label="URINE COLOUR" options={URINE_COLORS} value={urineColor} onChange={setUrineColor} S={S} />
-            )}
+            {/* Stool colour (optional). Urine is always recorded as clear / pale. */}
             {hasStool(eventType) && (
               <ColorPicker label="STOOL COLOUR" options={STOOL_COLORS} value={stoolColor} onChange={setStoolColor} S={S} />
             )}
 
-            {/* Changed? */}
-            <View style={styles.section}>
-              <Text style={[styles.sectionLbl, { color: S.textSecondary }]}>WAS DIAPER CHANGED?</Text>
-              <View style={styles.yesNoRow}>
-                <TouchableOpacity
-                  onPress={() => { Haptics.selectionAsync(); setChanged(true); }}
-                  style={[
-                    styles.yesNoBtn,
-                    changed === true
-                      ? { backgroundColor: S.tile, borderColor: S.blue, borderWidth: 1.5 }
-                      : { backgroundColor: S.surface, borderColor: S.border },
-                  ]}
-                >
-                  <Ionicons name={changed === true ? 'checkmark-circle' : 'checkmark-circle-outline'} size={22} color={changed === true ? S.blue : S.textSecondary} />
-                  <Text style={[styles.yesNoText, { color: changed === true ? S.blueText : S.text }]}>Yes, changed</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => { Haptics.selectionAsync(); setChanged(false); }}
-                  style={[
-                    styles.yesNoBtn,
-                    changed === false
-                      ? { backgroundColor: S.tile, borderColor: S.blue, borderWidth: 1.5 }
-                      : { backgroundColor: S.surface, borderColor: S.border },
-                  ]}
-                >
-                  <Ionicons name={changed === false ? 'checkmark-circle' : 'close-circle-outline'} size={22} color={changed === false ? S.blue : S.textSecondary} />
-                  <Text style={[styles.yesNoText, { color: changed === false ? S.blueText : S.text }]}>Not yet</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
             {/* Change time */}
-            {changed === true && (
+            {changed && (
               <View style={styles.section}>
                 <Text style={[styles.sectionLbl, { color: S.textSecondary }]}>CHANGED AT</Text>
                 <View style={styles.timeRow}>
@@ -439,7 +358,7 @@ export default function DiaperScreen({ navigation }) {
               </View>
             )}
 
-            {timeError && changed !== null && (
+            {timeError && (
               <Text style={[styles.errorText, { color: COLORS.error }]}>{timeError}</Text>
             )}
 
@@ -468,18 +387,6 @@ export default function DiaperScreen({ navigation }) {
             </View>
             <Text style={[styles.insightText, { color: COLORS.error }]}>
               {stats.colorAlerts} diaper{stats.colorAlerts > 1 ? 's' : ''} today with a colour to show the doctor
-            </Text>
-          </View>
-        )}
-
-        {/* ── Insight Banner ── */}
-        {stats.avgDelay !== null && step === null && (
-          <View style={[styles.insightCard, { backgroundColor: S.hero, borderColor: S.border }]}>
-            <View style={[styles.insightIcon, { backgroundColor: S.surface }]}>
-              <Ionicons name="bulb-outline" size={18} color={S.blue} />
-            </View>
-            <Text style={[styles.insightText, { color: S.text }]}>
-              Avg diaper change delay today: {stats.avgDelay} min
             </Text>
           </View>
         )}
@@ -521,14 +428,16 @@ export default function DiaperScreen({ navigation }) {
                     </View>
                     <Text style={[styles.logSub, { color: S.text }]}>
                       {evTimeStr}
-                      {log.changed && chTimeStr
+                      {!log.changed
+                        ? '  →  Not changed'
+                        : chTimeStr && chTimeStr !== evTimeStr
                         ? `  →  Changed at ${chTimeStr}`
-                        : '  →  Not changed'}
+                        : ''}
                     </Text>
-                    {(log.urineColor || log.stoolColor) ? (
+                    {(urineColourOf(log) || log.stoolColor) ? (
                       <View style={styles.logColors}>
                         {[
-                          ['Urine', findColor(URINE_COLORS, log.urineColor)],
+                          ['Urine', urineColourOf(log)],
                           ['Stool', findColor(STOOL_COLORS, log.stoolColor)],
                         ].filter(([, c]) => c).map(([kind, c]) => (
                           <View key={kind} style={styles.logColor}>
@@ -632,13 +541,6 @@ const styles = StyleSheet.create({
     flex: 1, minHeight: 56, borderRadius: 16, borderWidth: 1.5,
     textAlign: 'center', fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.heavy,
   },
-
-  yesNoRow: { flexDirection: 'row', gap: SPACING.sm },
-  yesNoBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, minHeight: 56, borderRadius: 20, borderWidth: 1,
-  },
-  yesNoText: { fontSize: fs(15), fontWeight: FONT_WEIGHT.bold },
 
   errorText: {
     fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold,

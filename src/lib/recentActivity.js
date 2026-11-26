@@ -1,5 +1,5 @@
 import { formatDuration } from '../utils/formatters';
-import { URINE_COLORS, STOOL_COLORS, findColor } from '../store/useDiaperStore';
+import { STOOL_COLORS, findColor, urineColourOf } from '../store/useDiaperStore';
 import { JAUNDICE_LEVELS } from '../store/useHealthStores';
 
 /**
@@ -40,7 +40,7 @@ export function recentActivity({
   }
   for (const l of diapers) {
     const type = { urine: 'Wet', stool: 'Stool', both: 'Wet + stool', dry: 'Dry' }[l.eventType] || 'Diaper';
-    const colour = findColor(URINE_COLORS, l.urineColor)?.label || findColor(STOOL_COLORS, l.stoolColor)?.label;
+    const colour = urineColourOf(l)?.label || findColor(STOOL_COLORS, l.stoolColor)?.label;
     add(t(l.eventTime || l.createdAt), {
       key: `diaper-${l.id}`, icon: 'water-outline', label: 'Diaper',
       value: `${type}${colour ? ` · ${colour.toLowerCase()}` : ''}`,

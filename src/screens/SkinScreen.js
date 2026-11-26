@@ -34,7 +34,7 @@ export default function SkinScreen({ navigation }) {
   const save = async () => {
     if (!yellow && !signs.length) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await addLog(babyId, { yellow, signs, notes: notes.trim() });
+    addLog(babyId, { yellow, signs, notes: notes.trim() });
     setYellow(null);
     setSigns([]);
     setNotes('');

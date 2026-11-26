@@ -14,9 +14,9 @@ export function createLogStore(type) {
   return create((set, get) => {
     const save = async (babyId, list) => {
       set((s) => ({ logs: { ...s.logs, [babyId]: list } }));
-      try {
-        await AsyncStorage.setItem(key(babyId), JSON.stringify(list));
-      } catch (_) {}
+      // Saved on the phone at once; the upload to the server carries on in the background
+      // (uploads for one list go in order), so the form never waits on a slow network.
+      AsyncStorage.setItem(key(babyId), JSON.stringify(list)).catch(() => {});
     };
 
     return {

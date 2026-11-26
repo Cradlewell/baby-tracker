@@ -142,8 +142,8 @@ export function TextLink({ prefix, label, onPress, disabled }) {
 
 // Nurse / Client choice at the top of login and sign-up.
 const ROLE_OPTIONS = [
-  { value: 'nurse', label: 'Nurse', icon: 'medkit-outline', hint: 'Care for clients' },
   { value: 'client', label: 'Client', icon: 'people-outline', hint: 'Parent or family' },
+  { value: 'nurse', label: 'Nurse', icon: 'medkit-outline', hint: 'Care for clients' },
 ];
 
 export function RoleToggle({ value, onChange }) {

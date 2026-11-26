@@ -16,7 +16,8 @@ export const DIAPER_TYPES = {
 // that can point to a health problem; the note tells the carer to involve the doctor.
 // General guidance only, not a diagnosis.
 export const URINE_COLORS = [
-  { value: 'pale', label: 'Clear / pale', swatch: '#F3EFD2' },
+  // Urine is always recorded as this one; its swatch is the report's urine colour.
+  { value: 'pale', label: 'Clear / pale', swatch: '#40BBC9' },
   { value: 'yellow', label: 'Light yellow', swatch: '#F5DC6B' },
   { value: 'dark', label: 'Dark yellow', swatch: '#C99300',
     warn: 'Dark urine can be a sign of dehydration. Offer feeds, and tell the doctor if it continues.' },
@@ -40,6 +41,12 @@ export const STOOL_COLORS = [
 ];
 
 export const findColor = (list, value) => list.find((c) => c.value === value) || null;
+
+// Urine colour is not asked any more: every diaper with urine (wet or both) is recorded and
+// shown as clear / pale, older entries included.
+export const URINE_COLOUR = 'pale';
+export const urineColourOf = (log) =>
+  (['urine', 'both'].includes(log?.eventType || log?.type) ? findColor(URINE_COLORS, URINE_COLOUR) : null);
 
 export const useDiaperStore = create((set, get) => ({
   logs: {},

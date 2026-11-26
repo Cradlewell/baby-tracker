@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash       VARCHAR(100)    NOT NULL COMMENT 'bcrypt',
   verification_status ENUM('pending', 'verified') NOT NULL DEFAULT 'pending',
   role                ENUM('nurse', 'client') NOT NULL DEFAULT 'nurse' COMMENT 'nurse: opens clients by phone; client: a parent who sees only their own records',
+  google_sub          VARCHAR(64)     NULL     COMMENT 'Google account id, set after signing in with Google',
   verified_at         DATETIME        NULL,
   created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -21,10 +22,10 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS otp_codes (
   id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  purpose     ENUM('registration', 'client_access') NOT NULL,
+  purpose     ENUM('registration', 'client_access', 'password_reset') NOT NULL,
   user_id     BIGINT UNSIGNED NOT NULL COMMENT 'user who requested the code',
   client_id   BIGINT UNSIGNED NULL     COMMENT 'cradlewell_clients.clients.id for client_access codes',
-  phone       VARCHAR(20)     NOT NULL COMMENT 'number the code was sent to',
+  phone       VARCHAR(255)    NOT NULL COMMENT 'phone number or email address the code was sent to',
   code_hash   CHAR(64)        NOT NULL COMMENT 'HMAC-SHA256(OTP_SECRET, code)',
   attempts    TINYINT UNSIGNED NOT NULL DEFAULT 0,
   expires_at  DATETIME        NOT NULL,
