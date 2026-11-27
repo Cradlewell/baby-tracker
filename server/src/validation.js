@@ -67,11 +67,17 @@ export function requireOtp(value) {
 export const ROLES = ['nurse', 'client'];
 export function requireRole(value) {
   if (value === undefined || value === null || value === '') return 'nurse';
-  if (!ROLES.includes(value)) throw badRequest('invalid_role', 'Choose Nurse or Client.');
+  if (!ROLES.includes(value)) throw badRequest('invalid_role', 'Choose Parent or Nurse.');
   return value;
 }
 
 // Masks a phone number for display: +91******3210
 export function maskPhone(phone) {
   return phone.length > 6 ? `${phone.slice(0, 3)}${'*'.repeat(phone.length - 7)}${phone.slice(-4)}` : phone;
+}
+
+// Masks an email for display: ma********@gmail.com
+export function maskEmail(email) {
+  const [local, domain] = email.split('@');
+  return `${local.slice(0, 2)}${'*'.repeat(Math.max(3, local.length - 2))}@${domain}`;
 }

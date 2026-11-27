@@ -15,8 +15,8 @@ export default function SplashScreen({ navigation }) {
   const tagOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Not logged in -> Login; logged in -> ClientVerify (asked every time the app opens).
-    // Offline, the last client's records open from the phone's copy instead.
+    // Not logged in -> Login. Logged in -> straight back to the family last open (a nurse's
+    // access still active), or ClientVerify when there is none. Offline, the phone's copy opens.
     const start = async () => {
       const status = await startSession().catch(() => 'signedOut');
       if (status !== 'ready') return status === 'needsClient' ? 'ClientVerify' : 'Login';

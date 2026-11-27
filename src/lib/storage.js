@@ -100,9 +100,9 @@ async function tryPush(key, r) {
     if (isNetworkError(err) || err.code === 'baby_not_found' || err.status >= 500 || err.status === 401 || err.status === 403) {
       return false;
     }
-    // The server rejected the data itself; retrying would fail forever.
+    // The server rejected the data itself. Keep it marked unsent anyway: dropping the mark would
+    // let the next download replace the phone's copy and silently lose the new entries.
     console.warn(`Sync of ${key} rejected: ${err.message}`);
-    await AsyncStorage.removeItem(pendingKey(key));
     return false;
   }
 }
@@ -172,6 +172,14 @@ export async function clearClientCache(id = clientId) {
   if (id == null) return;
   const p = `@remote:${id}:`;
   const keys = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(p));
+  if (keys.length) await AsyncStorage.multiRemove(keys);
+}
+
+// On logout: every client's cached copy and pending changes on this phone, plus copies saved
+// before accounts existed (records kept only on the phone).
+export async function clearAllClientData() {
+  const keys = (await AsyncStorage.getAllKeys()).filter((k) =>
+    k.startsWith('@remote:') || k === BABIES_KEY || RECORD_RE.test(k));
   if (keys.length) await AsyncStorage.multiRemove(keys);
 }
 

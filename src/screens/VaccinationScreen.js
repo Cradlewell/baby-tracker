@@ -431,6 +431,7 @@ export default function VaccinationScreen({ navigation }) {
               value={markNotes}
               onChangeText={setMarkNotes}
               multiline
+              maxLength={1000}
             />
             <TouchableOpacity
               onPress={handleMark}
@@ -511,6 +512,7 @@ export default function VaccinationScreen({ navigation }) {
               value={newNotes}
               onChangeText={setNewNotes}
               multiline
+              maxLength={1000}
             />
             {(newName || newDue) && addError ? <Text style={styles.dateError}>{addError}</Text> : null}
 

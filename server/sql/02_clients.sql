@@ -11,11 +11,41 @@ CREATE TABLE IF NOT EXISTS clients (
   name       VARCHAR(120)    NOT NULL,
   phone      VARCHAR(20)     NOT NULL COMMENT 'E.164, e.g. +919876543210',
   user_id    BIGINT UNSIGNED NULL     COMMENT 'cradlewell_auth.users.id of the client''s own account, when they have one',
+  email      VARCHAR(255)    NULL     COMMENT 'parent''s email for access codes, confirmed by a code; the parent account''s email wins',
   created_at DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_clients_phone (phone),
   KEY idx_clients_user (user_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- Which nurse may open which family without a new code. Made when the family's code is
+-- entered; lasts until revoked (or expires_at, when an expiry is configured). Belongs to the
+-- nurse's account, not a phone. opened_at: the last time the nurse entered the family's number;
+-- for 30 days after it the family opens by itself when the nurse opens the app or logs in.
+CREATE TABLE IF NOT EXISTS client_access (
+  user_id    BIGINT UNSIGNED NOT NULL COMMENT 'the nurse: cradlewell_auth.users.id',
+  client_id  BIGINT UNSIGNED NOT NULL,
+  granted_at DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at DATETIME        NULL     COMMENT 'NULL: never expires',
+  revoked_at DATETIME        NULL,
+  opened_at  DATETIME        NULL,
+  PRIMARY KEY (user_id, client_id),
+  KEY idx_access_client (client_id),
+  CONSTRAINT fk_access_client FOREIGN KEY (client_id) REFERENCES clients (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- Nurse visits, for the admin dashboard: one row per nurse, family and day (India time) on which
+-- the nurse worked in that family's records.
+CREATE TABLE IF NOT EXISTS client_visits (
+  user_id    BIGINT UNSIGNED NOT NULL COMMENT 'the nurse: cradlewell_auth.users.id',
+  client_id  BIGINT UNSIGNED NOT NULL,
+  visit_date DATE            NOT NULL COMMENT 'day in India time (UTC+5:30)',
+  first_at   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, client_id, visit_date),
+  KEY idx_visits_date (visit_date),
+  KEY idx_visits_client (client_id),
+  CONSTRAINT fk_visits_client FOREIGN KEY (client_id) REFERENCES clients (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- Earlier versions linked each client to the users allowed to open it. Removed:

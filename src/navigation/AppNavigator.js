@@ -25,6 +25,9 @@ import EditBabyScreen from '../screens/EditBabyScreen';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import VerifyOtpScreen from '../screens/VerifyOtpScreen';
+import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
+import DeleteAccountScreen from '../screens/DeleteAccountScreen';
+import { setCrashScreen } from '../lib/crashReporter';
 import ClientVerifyScreen from '../screens/ClientVerifyScreen';
 import TemperatureScreen from '../screens/TemperatureScreen';
 import BreathingScreen from '../screens/BreathingScreen';
@@ -185,12 +188,13 @@ export default function AppNavigator() {
   }, []);
 
   return (
-    <NavigationContainer ref={navigationRef}>
+    <NavigationContainer ref={navigationRef} onStateChange={() => setCrashScreen(navigationRef.getCurrentRoute()?.name)}>
       <Stack.Navigator screenOptions={{ headerShown: false, cardStyle: { backgroundColor: C.background } }}>
         <Stack.Screen name="Splash" component={SplashScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Register" component={RegisterScreen} />
         <Stack.Screen name="VerifyOtp" component={VerifyOtpScreen} />
+        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
         <Stack.Screen name="GoogleSignup" component={GoogleSignupScreen} />
         <Stack.Screen name="ClientVerify" component={ClientVerifyScreen} />
         <Stack.Screen name="Onboarding" component={OnboardingScreen} />
@@ -209,6 +213,7 @@ export default function AppNavigator() {
         <Stack.Screen name="HealthAlerts" component={HealthAlertsScreen} />
         <Stack.Screen name="Notifications" component={NotificationsScreen} />
         <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+        <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
         <Stack.Screen name="About" component={AboutScreen} />
         <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
         {TRACK_SCREENS.map((t) => (

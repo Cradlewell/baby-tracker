@@ -41,7 +41,7 @@ export async function requireAuth(req, _res, next) {
   if (!match) return next(unauthorized('not_logged_in', 'Please log in.'));
 
   const [rows] = await authDb.query(
-    `SELECT s.id, s.user_id, s.client_id, u.full_name, u.email, u.phone, u.role, u.verification_status
+    `SELECT s.id, s.user_id, s.client_id, u.full_name, u.email, u.phone, u.role, u.verification_status, u.google_sub
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > UTC_TIMESTAMP()`,
     [hashToken(match[1])]
@@ -57,7 +57,7 @@ export async function requireAuth(req, _res, next) {
     userId: s.user_id,
     clientId: s.client_id,
     role: s.role,
-    user: { id: s.user_id, fullName: s.full_name, email: s.email, phone: s.phone, role: s.role },
+    user: { id: s.user_id, fullName: s.full_name, email: s.email, phone: s.phone, role: s.role, google: !!s.google_sub },
   };
   next();
 }
@@ -73,13 +73,35 @@ export function requireNurse(req, _res, next) {
 // A client (parent) account's own entry in the clients table, matched by the account's phone
 // number. A client a nurse already created with that number is linked to the account, so the
 // parent sees the records the nurse logged; otherwise a new client is created.
+export const FAMILY_NEEDS_CHECK = 'A nurse has already registered a family with your phone number. To open it, tap "Continue with Google" with the email the nurse registered for your family, or write to care@cradlewell.com.';
+
+// The parent proved this phone number with an SMS code: a family a nurse registered on it
+// (and no parent owns yet) becomes theirs.
+export async function linkFamilyByProvenPhone(userId, phone) {
+  await clientsDb.query('UPDATE clients SET user_id = ? WHERE phone = ? AND user_id IS NULL', [userId, phone]);
+}
+
+// A family a nurse registered on this number that no parent owns yet (null if none).
+export async function unclaimedFamily(phone) {
+  const [rows] = await clientsDb.query('SELECT id, email FROM clients WHERE phone = ? AND user_id IS NULL', [phone]);
+  return rows[0] || null;
+}
+
 export async function openOwnClient(user) {
-  const [rows] = await clientsDb.query('SELECT id, name, phone, user_id FROM clients WHERE phone = ?', [user.phone]);
+  const [rows] = await clientsDb.query('SELECT id, name, phone, user_id, email FROM clients WHERE phone = ?', [user.phone]);
   if (rows[0]) {
-    if (rows[0].user_id == null) {
-      await clientsDb.query('UPDATE clients SET user_id = ? WHERE id = ? AND user_id IS NULL', [user.id, rows[0].id]);
+    const c = rows[0];
+    if (Number(c.user_id) === Number(user.id)) return c;
+    // A nurse registered this family before the parent signed up. Typing the phone number proves
+    // nothing (sign-up codes may be off), so the family is handed over only to someone who
+    // proves it is theirs: Google has confirmed they own the email the family's code went to.
+    // (A phone proven by SMS is linked in linkFamilyByProvenPhone instead.)
+    const sameEmail = c.email && String(c.email).toLowerCase() === String(user.email).toLowerCase();
+    if (c.user_id == null && user.google_sub && sameEmail) {
+      await clientsDb.query('UPDATE clients SET user_id = ? WHERE id = ? AND user_id IS NULL', [user.id, c.id]);
+      return c;
     }
-    return rows[0];
+    throw forbidden('family_needs_check', FAMILY_NEEDS_CHECK);
   }
   try {
     const [res] = await clientsDb.query(
@@ -95,14 +117,87 @@ export async function openOwnClient(user) {
   }
 }
 
-// Middleware: requires a client opened in this session (by its phone number) that still exists.
-// Clients are not tied to a nurse, so there is no per-user authorization check.
+// ---- Nurse access to a family -------------------------------------------------------------
+// A nurse enters a family's code once; after that the family opens without a code (on any phone
+// the nurse logs in on) until the access expires or is revoked. Parents never need it.
+const codesOn = () => config.clientCodeChannel !== 'off';
+const ACTIVE = '(a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > UTC_TIMESTAMP()))';
+const REMEMBERED = `(${ACTIVE} AND a.opened_at > UTC_TIMESTAMP() - INTERVAL ? DAY)`;
+
+export async function hasClientAccess(userId, clientId) {
+  const [rows] = await clientsDb.query(
+    `SELECT 1 FROM client_access a WHERE a.user_id = ? AND a.client_id = ? AND ${ACTIVE}`,
+    [userId, clientId]
+  );
+  return rows.length > 0;
+}
+
+// Called when the family's code was entered: starts (or renews) this nurse's access.
+export async function grantClientAccess(userId, clientId) {
+  const days = config.clientAccessDays;
+  await clientsDb.query(
+    `INSERT INTO client_access (user_id, client_id, granted_at, expires_at, opened_at)
+     VALUES (?, ?, UTC_TIMESTAMP(), IF(? > 0, UTC_TIMESTAMP() + INTERVAL ? DAY, NULL), UTC_TIMESTAMP())
+     ON DUPLICATE KEY UPDATE granted_at = VALUES(granted_at), expires_at = VALUES(expires_at),
+                             opened_at = VALUES(opened_at), revoked_at = NULL`,
+    [userId, clientId, days, days]
+  );
+}
+
+// The nurse entered this family's number again: the 30 days of opening by itself start again.
+export async function markClientOpened(userId, clientId) {
+  await clientsDb.query('UPDATE client_access SET opened_at = UTC_TIMESTAMP() WHERE user_id = ? AND client_id = ?', [userId, clientId]);
+}
+
+// True while the family should open by itself for this nurse (number entered in the last 30 days).
+export async function isClientRemembered(userId, clientId) {
+  if (!codesOn()) return true;
+  const [rows] = await clientsDb.query(
+    `SELECT 1 FROM client_access a WHERE a.user_id = ? AND a.client_id = ? AND ${REMEMBERED}`,
+    [userId, clientId, config.clientRememberDays]
+  );
+  return rows.length > 0;
+}
+
+// The family a nurse last opened, while it is still remembered: opened again at login.
+export async function rememberedClient(userId) {
+  if (!codesOn()) return null;
+  const [rows] = await clientsDb.query(
+    `SELECT c.id, c.name, c.phone FROM client_access a JOIN clients c ON c.id = a.client_id
+      WHERE a.user_id = ? AND ${REMEMBERED} ORDER BY a.opened_at DESC LIMIT 1`,
+    [userId, config.clientRememberDays]
+  );
+  return rows[0] || null;
+}
+
+// A nurse working in a family's records counts as a visit, once per nurse, family and day (India
+// time). Remembered in memory so only the first request of the day writes.
+const visitSeen = new Set();
+export const indiaDate = (ms = Date.now()) => new Date(ms + 330 * 60000).toISOString().slice(0, 10);
+function recordVisit(userId, clientId) {
+  const day = indiaDate();
+  const key = `${userId}:${clientId}:${day}`;
+  if (visitSeen.has(key)) return;
+  if (visitSeen.size > 5000) visitSeen.clear();
+  visitSeen.add(key);
+  clientsDb.query('INSERT IGNORE INTO client_visits (user_id, client_id, visit_date) VALUES (?, ?, ?)', [userId, clientId, day])
+    .catch(() => visitSeen.delete(key));
+}
+
+// Middleware: requires a client opened in this session (by its phone number) that still exists,
+// and, for a nurse while codes are on, an access that has not expired or been revoked.
 export async function requireClient(req, _res, next) {
-  const { clientId, sessionId } = req.auth;
+  const { clientId, sessionId, userId, role } = req.auth;
   if (!clientId) return next(forbidden('client_not_verified', "Enter the client's phone number first."));
   if (!(await findClientById(clientId))) {
     await setSessionClient(sessionId, null);
     return next(forbidden('client_not_found', 'This client no longer exists.'));
   }
+  if (role === 'nurse' && codesOn() && !(await hasClientAccess(userId, clientId))) {
+    await setSessionClient(sessionId, null);
+    return next(forbidden('client_access_ended',
+      "Your access to this family has ended. Enter their phone number to send the parent a new code."));
+  }
+  if (role === 'nurse') recordVisit(userId, clientId);
   next();
 }

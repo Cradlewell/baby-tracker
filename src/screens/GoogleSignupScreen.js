@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { APPROVAL_NOTICE } from '../constants/app';
 import { View } from 'react-native';
 
 import { AuthScreen, AuthHeader, Field, PrimaryButton, Banner, RoleToggle } from '../components/AuthUI';
@@ -30,10 +31,26 @@ export default function GoogleSignupScreen({ navigation, route }) {
     setBusy(true);
     try {
       const res = await completeGoogleSignup({ signupToken, phone: phone.trim(), role, fullName: fullName.trim() });
+      if (res.otpRequired) {
+        // This number already has a family's records: prove it is yours before they open.
+        navigation.navigate('VerifyOtp', {
+          purpose: 'google', signupToken, email: res.email || email,
+          phoneMasked: res.phoneMasked, expiresInSeconds: res.expiresInSeconds,
+        });
+        return;
+      }
+      if (res.approvalPending) {
+        // A new nurse: the account exists but waits for Cradlewell to approve it.
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Login', params: { email: res.email || email, role: 'nurse', notice: { kind: 'pending', message: APPROVAL_NOTICE } } }],
+        });
+        return;
+      }
       // Phone saved, account ready: straight to the dashboard (asked only this once).
       goAfterLogin(navigation, res.status);
     } catch (err) {
-      if (err.code === 'invalid_phone' || err.code === 'phone_taken') setErrors({ phone: err.message });
+      if (err.code === 'invalid_phone' || err.code === 'phone_taken' || err.code === 'phone_needs_verification') setErrors({ phone: err.message });
       else if (err.code === 'invalid_name') setErrors({ fullName: err.message });
       else setError(err.message);
     } finally {

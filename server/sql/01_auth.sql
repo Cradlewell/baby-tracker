@@ -10,8 +10,9 @@ CREATE TABLE IF NOT EXISTS users (
   email               VARCHAR(254)    NOT NULL COMMENT 'lower-cased',
   password_hash       VARCHAR(100)    NOT NULL COMMENT 'bcrypt',
   verification_status ENUM('pending', 'verified') NOT NULL DEFAULT 'pending',
-  role                ENUM('nurse', 'client') NOT NULL DEFAULT 'nurse' COMMENT 'nurse: opens clients by phone; client: a parent who sees only their own records',
+  role                ENUM('nurse', 'client', 'admin') NOT NULL DEFAULT 'nurse' COMMENT 'nurse: opens clients by phone; client: a parent who sees only their own records; admin: the web dashboard only',
   google_sub          VARCHAR(64)     NULL     COMMENT 'Google account id, set after signing in with Google',
+  approval_status     ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'approved' COMMENT 'nurses who sign up in the app wait for the admin to approve them',
   verified_at         DATETIME        NULL,
   created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -52,4 +53,19 @@ CREATE TABLE IF NOT EXISTS sessions (
   UNIQUE KEY uq_sessions_token (token_hash),
   KEY idx_sessions_user (user_id),
   CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- App errors sent by the app (crash reporting). No user, no baby data: only what failed, where,
+-- and the app version, so problems can be found and fixed. Kept 90 days.
+CREATE TABLE IF NOT EXISTS crash_reports (
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  message     VARCHAR(500)    NOT NULL,
+  stack       TEXT            NULL,
+  is_fatal    TINYINT(1)      NOT NULL DEFAULT 0,
+  app_version VARCHAR(20)     NULL,
+  platform    VARCHAR(40)     NULL,
+  screen      VARCHAR(60)     NULL,
+  created_at  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_crash_created (created_at)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;

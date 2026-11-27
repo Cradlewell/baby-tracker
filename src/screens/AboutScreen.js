@@ -118,10 +118,12 @@ const POLICY = [
     'Account details: your name, email address, phone number and whether you are a parent or a nurse. Your password is stored only in a scrambled (hashed) form that cannot be read back.',
     "Baby details you enter: name, date of birth, gender and birth weight.",
     'Care records you enter: feeds, sleep, diapers, medicines and doses, vaccines, growth, temperature, breathing, skin checks and milestones.',
+    'Error reports: when the app fails, it sends what went wrong, the screen and the app version, so we can fix it. They contain no name, email or baby data and are deleted after 90 days.',
   ]],
   ['How we use it', [
     'To show your records, charts, alerts and reminders in the app and to create PDF reports.',
     'To keep your records in step between the phones you and your care team use.',
+    "To send one-time codes by email: to confirm a nurse may open a family's records, and to reset a password.",
     'We do not sell your data, show advertising, or use it for marketing.',
   ]],
   ['Where it is kept', [
@@ -130,13 +132,14 @@ const POLICY = [
     'Medicine and vaccine reminders, your app lock PIN and your notification settings stay on your phone only.',
   ]],
   ['Who can see it', [
-    "Nurses can open a family's records only after the parent's phone number is verified with a one-time code.",
+    "A nurse can open a family's records only after the parent gives them a one-time code sent to the parent's email.",
     'PDF reports are created on your phone; they are shared only when you choose to send them.',
     'We share data with nobody else, unless the law requires it.',
   ]],
   ['How long we keep it', [
     'Records are kept while your account is open. Deleting a baby profile in Settings deletes that baby\'s records.',
-    `To delete your account and all its data, email ${SUPPORT_EMAIL} from the address you signed up with. We delete it within 30 days.`,
+    'You can delete your account in the app: Profile → Account → Delete account. For a parent this deletes the account, the babies and all their records at once. For a nurse it deletes the account and their access to families; the families keep their records.',
+    `Can't open the app? Email ${SUPPORT_EMAIL} from the address you signed up with and we delete the account within 30 days.`,
   ]],
   ['Your choices', [
     'You can view, change and delete the records you entered at any time.',

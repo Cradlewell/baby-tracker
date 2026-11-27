@@ -377,6 +377,7 @@ export default function MedicineScreen({ navigation }) {
               value={notes}
               onChangeText={setNotes}
               multiline
+              maxLength={1000}
               numberOfLines={2}
             />
           </View>

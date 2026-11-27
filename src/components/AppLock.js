@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
 
-import { useSettingsStore } from '../store/useSettingsStore';
+import { useSettingsStore, MAX_PIN_TRIES } from '../store/useSettingsStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useBabyStore } from '../store/useBabyStore';
 import { COLORS, DARK_COLORS } from '../constants/colors';
@@ -16,8 +16,13 @@ export const PIN_LENGTH = 4;
 // Back from the background after this long, the app locks again. A short trip (opening a PDF,
 // answering the share sheet) does not ask for the PIN again.
 const RELOCK_AFTER_MS = 30 * 1000;
-const MAX_TRIES = 5;
-const WAIT_MS = 30 * 1000;
+
+const waitText = (ms) => {
+  const s = Math.max(1, Math.ceil(ms / 1000));
+  if (s < 60) return `${s} s`;
+  const m = Math.ceil(s / 60);
+  return `${m} min`;
+};
 
 /** True when this phone has a fingerprint / face set up that can unlock the app. */
 export async function biometricsAvailable() {
@@ -105,6 +110,9 @@ export function PinPad({ title, subtitle, error, onComplete, onBiometrics, disab
 /**
  * The lock screen, over the whole app, while the app lock is on and the app is locked.
  * It locks when the app starts and when it comes back after RELOCK_AFTER_MS in the background.
+ * It is its own full-screen window (a Modal), so sheets and pop-ups opened before the app
+ * locked stay underneath it, and the Android back button does nothing while it is up.
+ * The wrong-PIN count and wait are saved, so closing and reopening the app doesn't reset them.
  * onForgot: called after the parent confirms "Forgot PIN" (logs out).
  */
 export function LockScreen({ onForgot }) {
@@ -114,7 +122,6 @@ export function LockScreen({ onForgot }) {
   const C = darkMode ? DARK_COLORS : COLORS;
   const insets = useSafeAreaInsets();
   const [error, setError] = useState('');
-  const [tries, setTries] = useState(0);
   const [waitUntil, setWaitUntil] = useState(0);
   const [, tick] = useState(0);
   const leftAt = useRef(null);
@@ -134,14 +141,23 @@ export function LockScreen({ onForgot }) {
 
   const tryBiometrics = useCallback(async () => {
     if (await askBiometrics()) {
-      setTries(0); setError('');
+      setError('');
+      await useSettingsStore.getState().pinPassed();
       useSettingsStore.getState().unlock();
     }
   }, []);
 
-  // Offer the fingerprint / face prompt as soon as the lock screen appears.
+  // When the lock appears: pick up a wait still running from before the app was closed, and
+  // offer the fingerprint / face prompt (not during a wait).
   useEffect(() => {
-    if (show && biometrics) tryBiometrics();
+    if (!show) return;
+    let cancelled = false;
+    useSettingsStore.getState().pinTries().then(({ waitUntil: w }) => {
+      if (cancelled) return;
+      setWaitUntil(w);
+      if (biometrics && !(w > Date.now())) tryBiometrics();
+    });
+    return () => { cancelled = true; };
   }, [show, biometrics]);
 
   // Counts down the wait after too many wrong PINs.
@@ -155,21 +171,18 @@ export function LockScreen({ onForgot }) {
   if (!show) return null;
 
   const check = async (pin) => {
-    if (await useSettingsStore.getState().checkPin(pin)) {
-      setTries(0); setError('');
-      useSettingsStore.getState().unlock();
+    if (waitUntil > Date.now()) return;
+    const store = useSettingsStore.getState();
+    if (await store.checkPin(pin)) {
+      setError('');
+      await store.pinPassed();
+      store.unlock();
       return;
     }
     Vibration.vibrate(200);
-    const n = tries + 1;
-    if (n >= MAX_TRIES) {
-      setTries(0);
-      setWaitUntil(Date.now() + WAIT_MS);
-      setError('');
-    } else {
-      setTries(n);
-      setError(`Wrong PIN. ${MAX_TRIES - n} ${MAX_TRIES - n === 1 ? 'try' : 'tries'} left.`);
-    }
+    const { left, waitUntil: w } = await store.pinFailed();
+    setWaitUntil(w);
+    setError(left === MAX_PIN_TRIES ? '' : `Wrong PIN. ${left} ${left === 1 ? 'try' : 'tries'} left.`);
   };
 
   const forgot = () => Alert.alert(
@@ -181,10 +194,16 @@ export function LockScreen({ onForgot }) {
     ]
   );
 
-  const secs = Math.ceil((waitUntil - Date.now()) / 1000);
   return (
+    <Modal
+      visible
+      animationType="none"
+      statusBarTranslucent
+      // Android back button: stays on the lock screen.
+      onRequestClose={() => {}}
+    >
     <View
-      style={[StyleSheet.absoluteFill, styles.lock, { backgroundColor: C.background, paddingTop: insets.top + 40, paddingBottom: insets.bottom + 20 }]}
+      style={[styles.lock, { flex: 1, backgroundColor: C.background, paddingTop: insets.top + 40, paddingBottom: insets.bottom + 20 }]}
       accessibilityViewIsModal
     >
       <View style={[styles.lockIcon, { backgroundColor: C.primaryLight }]}>
@@ -194,7 +213,7 @@ export function LockScreen({ onForgot }) {
         C={C}
         title="Enter your PIN"
         subtitle="Cradlewell Bloom is locked"
-        error={waiting ? `Too many wrong tries. Wait ${secs} s.` : error}
+        error={waiting ? `Too many wrong tries. Wait ${waitText(waitUntil - Date.now())}.` : error}
         disabled={waiting}
         onComplete={check}
         onBiometrics={biometrics ? tryBiometrics : null}
@@ -203,6 +222,7 @@ export function LockScreen({ onForgot }) {
         <Text style={[styles.forgotText, { color: C.primary }]}>Forgot PIN?</Text>
       </TouchableOpacity>
     </View>
+    </Modal>
   );
 }
 

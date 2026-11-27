@@ -140,7 +140,7 @@ export default function SettingsScreen({ navigation, route }) {
 
   const handleLogout = () => confirmLeave(
     'Log out?',
-    "You will need your email, password and the client's verification code to sign in again.",
+    "You will need your email and password to log in again. This phone's copy of the records and any saved PDF reports are removed.",
     'Log out',
     logout,
     'Login'
@@ -377,6 +377,19 @@ export default function SettingsScreen({ navigation, route }) {
           label="Log out"
           labelColor={COLORS.error}
           onPress={handleLogout}
+        />
+      )}
+      {card(
+        <SettingRow
+          C={C}
+          icon="trash-outline"
+          color={COLORS.error}
+          tileBg={errorTint}
+          label="Delete account"
+          labelColor={COLORS.error}
+          sub={isClientAccount ? 'Deletes your account, babies and all records' : 'Deletes your account and access to families'}
+          onPress={() => navigation.navigate('DeleteAccount')}
+          right={chevron}
         />
       )}
     </>

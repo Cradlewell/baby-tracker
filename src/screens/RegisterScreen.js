@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { APPROVAL_NOTICE } from '../constants/app';
 import { View } from 'react-native';
 
 import { AuthScreen, AuthHeader, Field, PrimaryButton, TextLink, Banner, RoleToggle } from '../components/AuthUI';
@@ -60,18 +61,24 @@ export default function RegisterScreen({ navigation, route }) {
         role,
       });
       if (res.otpRequired === false) {
-        // Codes switched off: the account is already active.
+        // Codes switched off: the account is already active (a nurse's waits for approval).
         navigation.reset({
           index: 0,
           routes: [{
             name: 'Login',
-            params: { email: res.email, role, notice: { kind: 'success', message: 'Your account has been created. Please log in.' } },
+            params: {
+              email: res.email, role,
+              notice: res.approvalPending
+                ? { kind: 'pending', message: APPROVAL_NOTICE }
+                : { kind: 'success', message: 'Your account has been created. Please log in.' },
+            },
           }],
         });
         return;
       }
       navigation.navigate('VerifyOtp', {
         purpose: 'registration', email: res.email, phoneMasked: res.phoneMasked, expiresInSeconds: res.expiresInSeconds,
+        approvalPending: !!res.approvalPending,
       });
     } catch (err) {
       const field = SERVER_FIELD[err.code];

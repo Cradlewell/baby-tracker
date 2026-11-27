@@ -11,20 +11,37 @@ import * as SecureStore from 'expo-secure-store';
  */
 const KEY = '@cw_settings';
 const PIN_KEY = 'cw_app_pin';
+// Wrong-PIN count and the wait, kept with the PIN so closing the app does not reset them.
+const TRIES_KEY = 'cw_app_pin_tries';
+
+export const MAX_PIN_TRIES = 4;
+// After every 4 wrong PINs the wait grows: 30 s, 1 min, 5 min, 15 min, then 1 hour each time.
+const WAITS_MS = [30e3, 60e3, 5 * 60e3, 15 * 60e3, 60 * 60e3];
 
 export const NOTIFY_DEFAULTS = { health: true, care: true, medicine: true, vaccine: true };
 
-const pinStore = Platform.OS === 'web'
+const secure = (key) => (Platform.OS === 'web'
   ? {
-    get: () => AsyncStorage.getItem(PIN_KEY),
-    set: (v) => AsyncStorage.setItem(PIN_KEY, v),
-    remove: () => AsyncStorage.removeItem(PIN_KEY),
+    get: () => AsyncStorage.getItem(key),
+    set: (v) => AsyncStorage.setItem(key, v),
+    remove: () => AsyncStorage.removeItem(key),
   }
   : {
-    get: () => SecureStore.getItemAsync(PIN_KEY),
-    set: (v) => SecureStore.setItemAsync(PIN_KEY, v),
-    remove: () => SecureStore.deleteItemAsync(PIN_KEY),
-  };
+    get: () => SecureStore.getItemAsync(key),
+    set: (v) => SecureStore.setItemAsync(key, v),
+    remove: () => SecureStore.deleteItemAsync(key),
+  });
+const pinStore = secure(PIN_KEY);
+const triesStore = secure(TRIES_KEY);
+
+async function readTries() {
+  try {
+    const v = JSON.parse((await triesStore.get()) || 'null');
+    return { failures: Number(v?.failures) || 0, waitUntil: Number(v?.waitUntil) || 0 };
+  } catch (_) {
+    return { failures: 0, waitUntil: 0 };
+  }
+}
 
 export const useSettingsStore = create((set, get) => ({
   loaded: false,
@@ -72,6 +89,7 @@ export const useSettingsStore = create((set, get) => ({
 
   disableLock: async () => {
     await pinStore.remove().catch(() => {});
+    await triesStore.remove().catch(() => {});
     set({ appLock: false, biometrics: false });
     await get().save();
   },
@@ -82,4 +100,25 @@ export const useSettingsStore = create((set, get) => ({
   },
 
   checkPin: async (pin) => (await pinStore.get().catch(() => null)) === pin,
+
+  // { failures, waitUntil } as saved; used by the lock screen when it appears.
+  pinTries: readTries,
+
+  // A wrong PIN: returns { left, waitUntil }. Every MAX_PIN_TRIES wrong in a row starts a wait.
+  pinFailed: async () => {
+    const t = await readTries();
+    const failures = t.failures + 1;
+    let waitUntil = t.waitUntil;
+    if (failures % MAX_PIN_TRIES === 0) {
+      const step = Math.min(failures / MAX_PIN_TRIES - 1, WAITS_MS.length - 1);
+      waitUntil = Date.now() + WAITS_MS[step];
+    }
+    await triesStore.set(JSON.stringify({ failures, waitUntil })).catch(() => {});
+    return { left: MAX_PIN_TRIES - (failures % MAX_PIN_TRIES), waitUntil };
+  },
+
+  // The right PIN (or fingerprint): start counting from zero again.
+  pinPassed: async () => {
+    await triesStore.remove().catch(() => {});
+  },
 }));

@@ -1,22 +1,29 @@
 import React, { useEffect, useState } from 'react';
+import { APPROVAL_NOTICE } from '../constants/app';
 import { View, Text, StyleSheet } from 'react-native';
 
 import { AuthScreen, AuthHeader, PrimaryButton, TextLink, Banner, OtpInput } from '../components/AuthUI';
 import {
-  verifyRegistrationOtp, resendRegistrationOtp, verifyClientOtp, requestClientOtp,
+  verifyRegistrationOtp, resendRegistrationOtp, verifyClientOtp, requestClientOtp, verifyGoogleSignupOtp,
 } from '../lib/session';
+import { goAfterLogin } from '../components/ContinueWithGoogle';
 import { useBabyStore } from '../store/useBabyStore';
 import { COLORS } from '../constants/colors';
 import { FONT_SIZE, FONT_WEIGHT } from '../constants/theme';
 
 const RESEND_AFTER = 30;
+const isClientEmail = (purpose, sentTo) => purpose === 'client' && sentTo === 'email';
 const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-// One screen for both codes:
+// One screen for every code:
 //   purpose 'registration' — the user's own phone, activates the account
+//   purpose 'google'       — a Google sign-up whose phone already has a family's records
 //   purpose 'client'       — the client's phone, opens that client's records
 export default function VerifyOtpScreen({ navigation, route }) {
-  const { purpose, email, phone, phoneMasked } = route.params;
+  const { purpose, email, phone, signupToken, parentEmail } = route.params;
+  const [sentTo, setSentTo] = useState(route.params.sentTo);
+  const [masked, setMasked] = useState(route.params.sentTo === 'email' ? route.params.emailMasked : route.params.phoneMasked);
+  const byEmail = isClientEmail(purpose, sentTo);
   const isClient = purpose === 'client';
 
   const [code, setCode] = useState('');
@@ -50,13 +57,20 @@ export default function VerifyOtpScreen({ navigation, route }) {
         await verifyClientOtp(phone, value);
         const { onboardingDone } = useBabyStore.getState();
         navigation.reset({ index: 0, routes: [{ name: onboardingDone ? 'Main' : 'Onboarding' }] });
+      } else if (purpose === 'google') {
+        goAfterLogin(navigation, await verifyGoogleSignupOtp(signupToken, value));
       } else {
         await verifyRegistrationOtp(email, value);
         navigation.reset({
           index: 0,
           routes: [{
             name: 'Login',
-            params: { email, notice: { kind: 'success', message: 'Your phone number is verified and your account is active. Please log in.' } },
+            params: {
+              email,
+              notice: route.params?.approvalPending
+                ? { kind: 'pending', message: APPROVAL_NOTICE }
+                : { kind: 'success', message: 'Your phone number is verified and your account is active. Please log in.' },
+            },
           }],
         });
       }
@@ -76,10 +90,12 @@ export default function VerifyOtpScreen({ navigation, route }) {
     setInfo(null);
     setCode('');
     try {
-      const res = isClient ? await requestClientOtp(phone) : await resendRegistrationOtp(email);
+      const res = isClient ? await requestClientOtp(phone, parentEmail) : await resendRegistrationOtp(email);
       setExpiresAt(Date.now() + (res.expiresInSeconds || 300) * 1000);
       setResendAt(Date.now() + RESEND_AFTER * 1000);
-      setInfo(`A new code was sent to ${res.phoneMasked}.`);
+      const to = res.sentTo === 'email' ? res.emailMasked : res.phoneMasked;
+      if (isClient) { setSentTo(res.sentTo); setMasked(to); }
+      setInfo(`A new code was sent to ${to}.`);
     } catch (err) {
       setError(err.message);
     }
@@ -90,9 +106,11 @@ export default function VerifyOtpScreen({ navigation, route }) {
       <AuthHeader
         icon={isClient ? 'shield-checkmark' : 'chatbubble-ellipses'}
         title={isClient ? "Enter the client's code" : 'Verify your phone'}
-        subtitle={isClient
-          ? `We sent a 6-digit code to the client's phone ${phoneMasked}. Ask them to share it with you.`
-          : `We sent a 6-digit code to ${phoneMasked}.`}
+        subtitle={byEmail
+          ? `We emailed a 6-digit code to the parent at ${masked}. Ask them to share it with you.`
+          : isClient
+            ? `We sent a 6-digit code to the client's phone ${masked}. Ask them to share it with you.`
+            : `We sent a 6-digit code to ${masked}.`}
       />
       <Banner message={error} />
       <Banner kind="info" message={info} />

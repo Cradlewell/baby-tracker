@@ -63,7 +63,7 @@ export function AuthHeader({ icon, title, subtitle }) {
   );
 }
 
-export function Field({ label, icon, error, secure, style, ...inputProps }) {
+export function Field({ label, icon, prefix, error, secure, style, ...inputProps }) {
   const [hidden, setHidden] = useState(true);
   const [focused, setFocused] = useState(false);
   return (
@@ -75,6 +75,7 @@ export function Field({ label, icon, error, secure, style, ...inputProps }) {
         error && { borderColor: COLORS.error },
       ]}>
         {icon ? <Ionicons name={icon} size={18} color={focused ? COLORS.primary : COLORS.textMuted} /> : null}
+        {prefix ? <Text style={styles.prefix}>{prefix}</Text> : null}
         <TextInput
           style={styles.input}
           placeholderTextColor={COLORS.textMuted}
@@ -140,9 +141,9 @@ export function TextLink({ prefix, label, onPress, disabled }) {
   );
 }
 
-// Nurse / Client choice at the top of login and sign-up.
+// Parent / Nurse choice at the top of login and sign-up.
 const ROLE_OPTIONS = [
-  { value: 'client', label: 'Client', icon: 'people-outline', hint: 'Parent or family' },
+  { value: 'client', label: 'Parent', icon: 'people-outline', hint: 'Mother, father or family' },
   { value: 'nurse', label: 'Nurse', icon: 'medkit-outline', hint: 'Care for clients' },
 ];
 
@@ -183,10 +184,12 @@ export function Banner({ kind = 'error', message }) {
     error: { bg: COLORS.errorLight, fg: COLORS.error, icon: 'alert-circle' },
     success: { bg: COLORS.successLight, fg: COLORS.success, icon: 'checkmark-circle' },
     info: { bg: COLORS.primaryLight, fg: COLORS.primary, icon: 'information-circle' },
+    // Waiting on someone else (a nurse account awaiting approval): soft gold.
+    pending: { bg: '#FFFAE8', border: '#EAD694', iconColor: '#A17C23', fg: '#85651D', icon: 'time' },
   }[kind];
   return (
-    <View style={[styles.banner, { backgroundColor: palette.bg, borderColor: palette.fg + '33' }]} accessibilityLiveRegion="polite">
-      <Ionicons name={palette.icon} size={18} color={palette.fg} />
+    <View style={[styles.banner, { backgroundColor: palette.bg, borderColor: palette.border || palette.fg + '33' }]} accessibilityLiveRegion="polite">
+      <Ionicons name={palette.icon} size={18} color={palette.iconColor || palette.fg} />
       <Text style={[styles.bannerText, { color: palette.fg }]}>{message}</Text>
     </View>
   );
@@ -278,6 +281,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1, fontSize: FONT_SIZE.base, color: COLORS.text, fontWeight: FONT_WEIGHT.semibold, paddingVertical: 14,
   },
+  prefix: { fontSize: FONT_SIZE.base, color: COLORS.text, fontWeight: FONT_WEIGHT.bold, marginRight: -4 },
   fieldError: { fontSize: FONT_SIZE.sm, color: COLORS.error, marginTop: 6, marginLeft: 4, fontWeight: FONT_WEIGHT.medium },
 
   cta: {

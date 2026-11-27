@@ -110,6 +110,7 @@ export default function BreathingScreen({ navigation }) {
           placeholder="e.g. asleep, after feed"
           placeholderTextColor={C.textMuted}
           multiline
+          maxLength={1000}
         />
         <PrimaryButton label="Save check" onPress={save} disabled={validRate == null && !signs.length} />
       </Card>

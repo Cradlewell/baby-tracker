@@ -5,6 +5,8 @@ import { config } from './config.js';
 import { authRouter } from './routes/auth.js';
 import { clientRouter } from './routes/client.js';
 import { dataRouter } from './routes/data.js';
+import { publicRouter } from './routes/public.js';
+import { adminRouter, adminPages } from './routes/admin.js';
 import { errorHandler } from './errors.js';
 
 export function createApp() {
@@ -15,13 +17,16 @@ export function createApp() {
   app.use(helmet());
   // The mobile app does not need CORS; only list origins for the web build (CORS_ORIGINS).
   if (config.corsOrigins.length) app.use(cors({ origin: config.corsOrigins }));
-  app.use(express.json({ limit: '5mb' }));
+  app.use(express.json({ limit: '20mb' }));
   app.use((_req, res, next) => {
     res.set('Cache-Control', 'no-store');
     next();
   });
 
   app.get('/health', (_req, res) => res.json({ ok: true }));
+  app.use(publicRouter);
+  app.use('/admin/api', adminRouter);
+  app.use('/admin', adminPages);
   app.use('/auth', authRouter);
   app.use('/client', clientRouter);
   app.use('/data', dataRouter);

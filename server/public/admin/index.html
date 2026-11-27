@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Cradlewell Admin Portal</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<style>
+  /* Cradlewell brand (src/constants/colors.js): Primary Purple #5F47FF, Primary Blue #6388FF,
+     Navy #1B1F2E, the blue-to-purple gradient at -45°, and their tints. Green / amber / red only
+     carry a status. */
+  :root {
+    --bg: #F5F6FF; --side: #FFFFFF; --card: #FFFFFF; --text: #1B1F2E; --muted: #5B6280; --faint: #8C92AE;
+    --line: #E6E8F5; --grid: #EEF0FA; --brand: #5F47FF; --brand-ink: #5F47FF; --brand-deep: #3D25D9; --brand-soft: #EEF0FF;
+    --blue: #6388FF; --blue-ink: #3558D6; --blue-soft: #E6ECFF;
+    --gradient: linear-gradient(135deg, #6388FF 0%, #5F47FF 100%);
+    --bar: #5F47FF; --bar-hover: #3D25D9;
+    /* Nurse-assisted families: green (paired with brand blue for self-tracking). */
+    --green: #2E9E5B; --green-ink: #1E7A45; --green-soft: #E3F5EC;
+    --good: #1F8A5B; --good-soft: #E3F5EC; --bad: #C2364A; --bad-soft: #FDECEE;
+    --track: #EEF0FA;
+    --shadow: 0 1px 2px rgba(27,31,46,.04), 0 6px 20px rgba(95,71,255,.07); --overlay: rgba(27,31,46,.45);
+  }
+  /* Always light, whatever the computer's own theme. */
+  html { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+  .icon { width: 20px; height: 20px; flex: none; }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+  /* ---------- Login ---------- */
+  .login { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+  .login { background: radial-gradient(ellipse at top, #E6ECFF 0%, var(--bg) 60%); }
+  .login form { width: 100%; max-width: 390px; background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 28px; box-shadow: var(--shadow); border-top: 4px solid var(--brand); }
+  .login h1 { margin: 18px 0 4px; font-size: 22px; }
+  .login p { margin: 0 0 18px; color: var(--muted); font-size: 14px; }
+  .lbl { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin: 14px 0 6px; }
+  .input, .select { width: 100%; height: 44px; border: 1.5px solid var(--line); border-radius: 12px; padding: 0 12px; background: var(--bg); }
+  .input:focus, .select:focus { outline: none; border-color: var(--brand); }
+  .btn { height: 46px; border: 0; border-radius: 12px; padding: 0 20px; background: var(--gradient); color: #fff; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+  .btn:hover { filter: brightness(1.06); }
+  .btn:disabled { opacity: .55; cursor: default; filter: none; }
+  .btn.ghost { background: transparent; color: var(--brand-ink); border: 1px solid var(--line); }
+  .btn.sm { height: 38px; padding: 0 14px; font-size: 14px; border-radius: 10px; }
+  .login .btn { width: 100%; margin-top: 20px; }
+  .err { color: var(--bad); font-size: 14px; margin-top: 12px; min-height: 20px; }
+
+  /* ---------- Brand ---------- */
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .mark { position: relative; width: 46px; height: 46px; flex: none; overflow: hidden; }
+  .mark img { position: absolute; left: 50%; top: 50%; width: 92px; height: 92px; transform: translate(-50%, -50%); }
+  .brand b { display: block; font-size: 21px; line-height: 1.1; letter-spacing: -.3px; background: var(--gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .brand span { display: block; font-size: 11px; font-weight: 700; letter-spacing: 1.6px; color: var(--muted); margin-top: 3px; }
+
+  /* ---------- Shell ---------- */
+  .shell { display: grid; grid-template-columns: 236px 1fr; min-height: 100vh; }
+  aside { background: var(--side); border-right: 1px solid var(--line); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }
+  aside .brand { padding: 20px 18px; border-bottom: 1px solid var(--line); }
+  .side-nav { padding: 14px 12px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+  .side-nav button { display: flex; align-items: center; gap: 14px; border: 0; background: none; padding: 11px 14px; border-radius: 12px; cursor: pointer; font-size: 15.5px; color: var(--text); text-align: left; }
+  .side-nav button .icon { width: 22px; height: 22px; color: var(--muted); }
+  .side-nav button:hover { background: var(--brand-soft); }
+  .side-nav button[aria-current="page"] { background: var(--brand-soft); color: var(--brand-ink); font-weight: 700; box-shadow: inset 3px 0 0 var(--brand); }
+  .side-nav button[aria-current="page"] .icon { color: var(--brand-ink); }
+  .side-me { display: flex; gap: 12px; align-items: center; padding: 16px 18px; border-top: 1px solid var(--line); }
+  .avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--gradient); color: #fff; display: grid; place-items: center; font-weight: 800; flex: none; }
+  .side-me b { display: block; } .side-me span { color: var(--muted); font-size: 13px; }
+
+  main { min-width: 0; padding: 0 24px 40px; }
+  .topbar { display: flex; align-items: center; gap: 16px; height: 64px; }
+  .crumb { color: var(--muted); font-size: 15px; } .crumb b { color: var(--text); }
+  .grow { flex: 1; }
+  .today { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 14.5px; }
+  .pop { position: relative; }
+  .iconbtn { width: 40px; height: 40px; border-radius: 12px; border: 0; background: none; display: grid; place-items: center; cursor: pointer; color: var(--text); position: relative; }
+  .iconbtn:hover, .iconbtn[aria-expanded="true"] { background: var(--brand-soft); }
+  .dot { position: absolute; top: 8px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); border: 2px solid var(--bg); }
+  .mebtn { display: flex; gap: 10px; align-items: center; border: 0; background: none; padding: 4px 8px 4px 4px; border-radius: 999px; cursor: pointer; font-weight: 600; }
+  .mebtn:hover, .mebtn[aria-expanded="true"] { background: var(--brand-soft); }
+  .mebtn .avatar { width: 34px; height: 34px; font-size: 14px; }
+  .menu { position: absolute; right: 0; top: 48px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; min-width: 240px; padding: 6px; box-shadow: 0 12px 32px rgba(0,0,0,.18); z-index: 30; }
+  .menu .who { padding: 10px 12px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+  .menu .who span { color: var(--faint); font-size: 13px; display: block; }
+  .menu button, .menu .note { width: 100%; text-align: left; border: 0; background: none; padding: 10px 12px; border-radius: 10px; display: flex; gap: 10px; align-items: flex-start; }
+  .menu button { cursor: pointer; } .menu button:hover { background: var(--brand-soft); }
+  .menu .note span { color: var(--muted); font-size: 13px; display: block; }
+
+  .pagehead { display: flex; align-items: flex-end; gap: 16px; margin: 6px 0 18px; flex-wrap: wrap; }
+  .pagehead h1 { margin: 0; font-size: 30px; letter-spacing: -.6px; line-height: 1.15; }
+  .pagehead p { margin: 4px 0 0; color: var(--muted); }
+  .pagehead .actions { margin-left: auto; display: flex; gap: 8px; }
+
+  /* ---------- Tiles ---------- */
+  .tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .tiles.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px; box-shadow: var(--shadow); display: flex; gap: 12px; min-width: 0; }
+  .tile .ic { width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+  .tile .ic .icon { width: 26px; height: 26px; }
+  .tile .k { font-size: 14px; font-weight: 600; line-height: 1.25; }
+  .tile .v { font-size: 30px; font-weight: 800; letter-spacing: -.6px; line-height: 1.15; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .tile .s { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .c-purple { background: var(--brand-soft); color: var(--brand); }
+  .c-blue, .c-teal, .c-green { background: var(--blue-soft); color: var(--blue-ink); }
+  .v-purple { color: var(--brand); } .v-teal, .v-green { color: var(--blue-ink); }
+  .c-nurse { background: var(--green-soft); color: var(--green-ink); } .v-nurse { color: var(--green-ink); }
+  .up { color: var(--good); font-weight: 700; } .down { color: var(--bad); font-weight: 700; }
+
+  /* ---------- Cards ---------- */
+  .grid3 { display: grid; grid-template-columns: 1.15fr 1.1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .grid2 { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; }
+  .grid2.even { grid-template-columns: 1fr 1fr; margin-bottom: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; box-shadow: var(--shadow); min-width: 0; }
+  .card h2 { margin: 0; font-size: 18px; }
+  .card .big { font-size: 30px; font-weight: 800; letter-spacing: -.6px; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+  .card .sub { color: var(--muted); font-size: 13px; margin: 2px 0 8px; }
+  .cardhead { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .link { margin-left: auto; color: var(--brand-ink); font-weight: 700; font-size: 14px; border: 0; background: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  .link:hover { text-decoration: underline; }
+
+  .donut { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; margin-top: 8px; }
+  .donut svg { width: 170px; height: 170px; flex: none; }
+  .donut .n { font-size: 30px; font-weight: 800; fill: var(--text); }
+  .donut .l { font-size: 14px; fill: var(--muted); }
+  .legend { display: flex; flex-direction: column; gap: 12px; flex: 1; min-width: 180px; }
+  .legend div { display: flex; align-items: center; gap: 10px; font-size: 14.5px; }
+  .legend i { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+  .legend b { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+  .chart { position: relative; }
+  .chart svg { display: block; width: 100%; overflow: visible; }
+  .axis { fill: var(--faint); font-size: 11px; }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .bar { fill: var(--bar); } .bar.on { fill: var(--bar-hover); }
+  .hit { fill: transparent; }
+  .vlabel { fill: var(--text); font-size: 12px; font-weight: 700; text-anchor: middle; }
+  .tip { position: absolute; pointer-events: none; background: var(--text); color: var(--bg); border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.4; white-space: nowrap; transform: translate(-50%, calc(-100% - 10px)); z-index: 5; }
+
+  .hbars { display: grid; grid-template-columns: auto 1fr auto; gap: 10px 12px; align-items: center; margin-top: 10px; font-size: 14.5px; }
+  .hbars .tr { height: 10px; border-radius: 999px; background: var(--track); overflow: hidden; }
+
+  .hbars .n { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+
+  .qa { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+  .qa button { display: flex; align-items: center; gap: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); cursor: pointer; text-align: left; }
+  .qa button:hover { border-color: var(--brand); }
+  .qa .ic { width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; flex: none; background: var(--gradient); color: #fff; }
+  .qa b { display: block; font-size: 16px; } .qa span { color: var(--muted); font-size: 13px; }
+  .qa .go { margin-left: auto; color: var(--text); }
+
+  /* ---------- Tables ---------- */
+  .search { width: 100%; height: 44px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); padding: 0 18px; margin-bottom: 10px; }
+  .search:focus { outline: none; border-color: var(--brand); }
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  thead th { background: var(--bg); }
+  th { text-align: left; font-size: 13px; font-weight: 700; padding: 10px 12px; white-space: nowrap; cursor: pointer; user-select: none; border-bottom: 1px solid var(--line); }
+  th:first-child { border-radius: 10px 0 0 0; } th:last-child { border-radius: 0 10px 0 0; }
+  th[aria-sort="ascending"]::after { content: " ▲"; font-size: 10px; } th[aria-sort="descending"]::after { content: " ▼"; font-size: 10px; }
+  th.nosort { cursor: default; }
+  td { padding: 11px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: middle; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.c, th.c { text-align: center; }
+  tr:last-child td { border-bottom: 0; }
+  .name { font-weight: 700; } .dim { color: var(--faint); } .code { color: var(--muted); font-size: 12.5px; display: block; }
+  .pill { display: inline-block; font-size: 12.5px; font-weight: 700; padding: 3px 10px; border-radius: 8px; }
+  .p-nurse { background: var(--green-soft); color: var(--green-ink); }
+  .p-self { background: var(--blue-soft); color: var(--blue-ink); }
+  .p-good { background: var(--good-soft); color: var(--good); }
+  .p-warn { background: #FFFAE8; color: #85651D; border: 1px solid #EAD694; }
+  .p-bad { background: var(--bad-soft); color: var(--bad); }
+  .pdf { height: 34px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--brand-ink); font-weight: 700; font-size: 13px; padding: 0 12px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+  .pdf:hover { border-color: var(--brand); background: var(--brand-soft); }
+  .pdf:disabled { color: var(--faint); cursor: default; background: none; }
+  .pdf .icon { width: 16px; height: 16px; }
+  .card.pending { margin-bottom: 14px; border-color: var(--brand); }
+  .card.pending .hint { margin: -4px 0 12px; font-size: 13.5px; color: var(--muted, #5A6690); }
+  .card.pending .count { min-width: 24px; height: 24px; padding: 0 8px; border-radius: 12px; background: var(--brand); color: #fff; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+  td.decide { text-align: right; } td.decide .btn + .btn { margin-left: 8px; } td.decide .icon { width: 16px; height: 16px; }
+  .empty { color: var(--muted); padding: 22px 12px; text-align: center; white-space: normal; }
+  .foot { color: var(--muted); font-size: 13px; margin-top: 12px; }
+
+  /* ---------- Dialogs ---------- */
+  .overlay { position: fixed; inset: 0; background: var(--overlay); display: grid; place-items: center; padding: 16px; z-index: 50; }
+  .dialog { width: 100%; max-width: 430px; background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 18px; box-shadow: 0 20px 60px rgba(0,0,0,.3); max-height: calc(100vh - 32px); overflow-y: auto; }
+  .dhead { display: flex; gap: 12px; align-items: center; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+  .dicon { width: 44px; height: 44px; border-radius: 12px; background: var(--gradient); color: #fff; display: grid; place-items: center; flex: none; }
+  .dhead h3 { margin: 0; font-size: 17px; } .dhead p { margin: 0; color: var(--muted); font-size: 13px; }
+  .x { margin-left: auto; align-self: flex-start; width: 34px; height: 34px; border: 0; background: none; border-radius: 10px; cursor: pointer; color: var(--muted); display: grid; place-items: center; }
+  .x:hover { background: var(--brand-soft); color: var(--text); }
+  .dsec { padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .dsec:last-of-type { border-bottom: 0; }
+  .dlabel { font-size: 13px; font-weight: 700; color: var(--muted); margin-bottom: 8px; }
+  .radio { display: flex; align-items: center; gap: 10px; padding: 7px 0; cursor: pointer; }
+  .radio input { width: 18px; height: 18px; accent-color: var(--brand); margin: 0; }
+  .hint { color: var(--faint); font-size: 12.5px; margin-top: 8px; }
+  .dialog .btn.wide { width: 100%; margin-top: 6px; }
+  .fname { color: var(--muted); font-size: 12.5px; margin-top: 10px; word-break: break-all; }
+  .derr { color: var(--bad); font-size: 13px; margin-top: 8px; min-height: 18px; }
+  .secret { display: flex; gap: 8px; align-items: center; background: var(--bg); border: 1px dashed var(--line); border-radius: 12px; padding: 12px; font: 600 18px ui-monospace, Consolas, monospace; letter-spacing: .5px; }
+  .secret span { flex: 1; word-break: break-all; }
+  .ok { background: var(--good-soft); color: var(--good); border-radius: 12px; padding: 10px 12px; font-size: 14px; margin-top: 12px; }
+
+  /* ---------- Small screens ---------- */
+  @media (max-width: 1480px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 1280px) { .grid3 { grid-template-columns: 1fr 1fr; } .grid3 > :last-child { grid-column: 1 / -1; } }
+  @media (max-width: 960px) {
+    .shell { grid-template-columns: 1fr; }
+    aside { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+    aside .brand { border-bottom: 0; padding: 14px 16px 6px; }
+    .side-nav { flex-direction: row; overflow-x: auto; padding: 6px 10px 10px; }
+    .side-nav button { white-space: nowrap; padding: 8px 12px; font-size: 14.5px; }
+    .side-me { display: none; }
+    main { padding: 0 16px 32px; }
+    .grid3, .grid2 { grid-template-columns: 1fr; }
+    .today span { display: none; }
+  }
+  @media (max-width: 640px) {
+    .tiles, .tiles.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tile { flex-direction: column; gap: 8px; }
+    .tile .ic { width: 40px; height: 40px; } .tile .v { font-size: 26px; }
+    .pagehead h1 { font-size: 26px; }
+    .crumb span { display: none; } .mebtn .nm { display: none; }
+  }
+</style>
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.3-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M15.5 4.8a3.5 3.5 0 0 1 0 6.4M18 14.8c2 .8 3.1 2.6 3.5 5.2"/></symbol>
+    <symbol id="i-steth" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3H5v6a5 5 0 0 0 10 0V3h-1"/><path d="M10 14v2a5 5 0 0 0 10 0v-2"/><circle cx="20" cy="12" r="2"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4.5" width="14" height="16.5" rx="2.5"/><path d="M9 3h6v3H9zM8.5 11h7M8.5 15h7M8.5 19h4"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-calcheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M9 15l2 2 4-4"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20h16M7 16v-4M11 16V8M15 16v-6M19 16V5"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-baby" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12.5" r="8.5"/><path d="M12 4c-1.5 0-2 1.5-.8 2.3"/><circle cx="9" cy="12" r=".9" fill="currentColor"/><circle cx="15" cy="12" r=".9" fill="currentColor"/><path d="M9.5 15.5c1.4 1.2 3.6 1.2 5 0"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z"/><path d="M8 12.5l2.5 2.5 2-2 1.5 1.5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="8" r="3.5"/><path d="M3.5 20c.7-3.6 3.2-5.5 6.5-5.5 1.3 0 2.5.3 3.4.9"/><circle cx="17.5" cy="17" r="4"/><path d="m15.8 17 1.2 1.2 2.3-2.4"/></symbol>
+    <symbol id="i-useradd" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.3-5.5 6.5-5.5s5.7 1.9 6.5 5.5M19 8v6M16 11h6"/></symbol>
+    <symbol id="i-stethadd" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3H4v6a5 5 0 0 0 10 0V3h-1"/><path d="M9 14v2a5 5 0 0 0 9 3"/><path d="M19 9v6M16 12h6"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2.5 2.5 0 0 0-2.5 2.5v13A2.5 2.5 0 0 0 7 21h10a2.5 2.5 0 0 0 2.5-2.5V8.5z"/><path d="M14 3v5.5h5.5M9 13h6M9 17h6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></symbol>
+    <symbol id="i-out" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 16l-4-4 4-4"/><path d="M6 12h10"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5M12 17.5v.1"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="8.5" y="8.5" width="11" height="11" rx="2.5"/><path d="M15.5 8.5V6A2.5 2.5 0 0 0 13 3.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5"/></symbol>
+  </svg>
+
+  <section class="login" id="login">
+    <form id="loginForm" autocomplete="on">
+      <div class="brand"><span class="mark"><img src="logo.png" alt=""></span><div><b>Cradlewell</b><span>ADMIN PORTAL</span></div></div>
+      <h1>Log in</h1>
+      <p>Use your admin email and password.</p>
+      <label class="lbl" for="email">Email</label>
+      <input class="input" id="email" type="email" autocomplete="username" required>
+      <label class="lbl" for="password">Password</label>
+      <input class="input" id="password" type="password" autocomplete="current-password" required>
+      <button class="btn" type="submit" id="loginBtn">Log in</button>
+      <div class="err" id="loginErr" role="alert"></div>
+    </form>
+  </section>
+
+  <div class="shell" id="app" hidden>
+    <aside>
+      <div class="brand"><span class="mark"><img src="logo.png" alt=""></span><div><b>Cradlewell</b><span>ADMIN PORTAL</span></div></div>
+      <nav class="side-nav" aria-label="Sections">
+        <button data-page="overview" aria-current="page"><svg class="icon"><use href="#i-grid"/></svg>Overview</button>      </nav>
+      <div class="side-me"><div class="avatar" id="sideAvatar">A</div><div><b id="sideName">Admin</b><span>Administrator</span></div></div>
+    </aside>
+
+    <main>
+      <div class="topbar">
+        <div class="crumb"><span>Admin Portal / </span><b id="crumb">Overview</b></div>
+        <div class="grow"></div>
+        <div class="today"><svg class="icon"><use href="#i-cal"/></svg><span id="today"></span></div>
+        <div class="pop">
+          <button class="iconbtn" id="bellBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Alerts">
+            <svg class="icon"><use href="#i-bell"/></svg><i class="dot" id="bellDot" hidden></i>
+          </button>
+          <div class="menu" id="bellMenu" hidden></div>
+        </div>
+        <div class="pop">
+          <button class="mebtn" id="meBtn" type="button" aria-haspopup="menu" aria-expanded="false">
+            <span class="avatar" id="topAvatar">A</span><span class="nm" id="topName">Admin</span><svg class="icon"><use href="#i-chev"/></svg>
+          </button>
+          <div class="menu" id="meMenu" role="menu" hidden>
+            <div class="who"><b id="meName">Admin</b><span id="meEmail"></span></div>
+            <button type="button" role="menuitem" id="refresh"><svg class="icon"><use href="#i-refresh"/></svg>Refresh data</button>
+            <button type="button" role="menuitem" id="logout"><svg class="icon"><use href="#i-out"/></svg>Log out</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="page"></div>
+    </main>
+  </div>
+
+  <!-- Monthly report -->
+  <div class="overlay" id="dl" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlTitle">
+      <div class="dhead">
+        <div class="dicon"><svg class="icon"><use href="#i-doc"/></svg></div>
+        <div><h3 id="dlTitle">Monthly baby report</h3><p id="dlClient"></p></div>
+        <button class="x" type="button" data-close aria-label="Close"><svg class="icon"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="dsec" id="dlPickSec" hidden>
+        <label class="dlabel" for="dlPick">Client</label>
+        <select class="select" id="dlPick"></select>
+      </div>
+      <div class="dsec" id="dlBabySec">
+        <div class="dlabel" id="dlBabyLabel">Select baby</div>
+        <div id="dlBabies" role="radiogroup" aria-labelledby="dlBabyLabel"></div>
+      </div>
+      <div class="dsec">
+        <label class="dlabel" for="dlMonth">Report month</label>
+        <select class="select" id="dlMonth"></select>
+        <div class="hint" id="dlHint">The same monthly report the app makes: from the first day with records to the last.</div>
+      </div>
+      <button class="btn wide" type="button" id="dlGo"><svg class="icon"><use href="#i-down"/></svg>Download PDF</button>
+      <div class="fname" id="dlName"></div>
+      <div class="derr" id="dlErr" role="alert"></div>
+    </div>
+  </div>
+
+  <!-- Add client / add nurse -->
+  <div class="overlay" id="add" hidden>
+    <form class="dialog" role="dialog" aria-modal="true" aria-labelledby="addTitle" id="addForm" novalidate>
+      <div class="dhead">
+        <div class="dicon"><svg class="icon" id="addIcon"><use href="#i-useradd"/></svg></div>
+        <div><h3 id="addTitle">Add client</h3><p id="addSub"></p></div>
+        <button class="x" type="button" data-close aria-label="Close"><svg class="icon"><use href="#i-x"/></svg></button>
+      </div>
+      <div id="addFields"></div>
+      <div class="derr" id="addErr" role="alert"></div>
+      <button class="btn wide" type="submit" id="addGo">Save</button>
+      <div id="addDone"></div>
+    </form>
+  </div>
+
+  <iframe id="printFrame" title="Report to print" style="position:fixed;width:0;height:0;border:0;right:0;bottom:0" aria-hidden="true" tabindex="-1"></iframe>
+  <script src="report.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

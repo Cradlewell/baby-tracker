@@ -73,6 +73,7 @@ export default function SkinScreen({ navigation }) {
           placeholder="e.g. rash on cheeks, eyes slightly yellow"
           placeholderTextColor={C.textMuted}
           multiline
+          maxLength={1000}
         />
         <PrimaryButton label="Save check" onPress={save} disabled={!yellow && !signs.length} />
       </Card>

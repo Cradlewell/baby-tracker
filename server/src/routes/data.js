@@ -10,7 +10,8 @@ dataRouter.use(requireAuth, requireClient);
 
 export const RECORD_TYPES = ['feeding', 'sleep', 'diaper', 'medicine', 'growth', 'vaccination', 'temperature', 'breathing', 'skin', 'milestone'];
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
-const MAX_ITEMS = 5000;
+// The display order lists every id of a baby's records, so this must allow years of entries.
+const MAX_ITEMS = 100000;
 const MAX_ITEM_BYTES = 32 * 1024;
 
 function parseChanges(body, { validateItem }) {

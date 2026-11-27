@@ -13,7 +13,8 @@
     "dev": "node --watch src/index.js",
     "db:setup": "node scripts/setup-db.js",
     "admin": "node scripts/admin.js",
-    "test": "node --test --test-concurrency=1 test/"
+    "test": "node --test --test-concurrency=1 test/",
+    "build:admin": "node admin-src/build.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -25,5 +26,8 @@
     "helmet": "^8.3.0",
     "mysql2": "^3.24.6",
     "nodemailer": "^6.10.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12"
   }
 }

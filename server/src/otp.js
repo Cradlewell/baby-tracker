@@ -23,8 +23,26 @@ const MESSAGES = {
   client_access: (code) => `Cradlewell Bloom: ${code} is the code to give your caregiver access to your baby's records. It expires in 5 minutes. Only share it if you asked for this.`,
 };
 
-// Codes sent by email (password reset).
+// Codes sent by email.
 const EMAILS = {
+  client_access: (code) => ({
+    subject: `${code} is your Cradlewell access code`,
+    text: `Your nurse asked to open your baby's records in the Cradlewell app.
+
+Your code is ${code}. It expires in 5 minutes.
+
+Share it with your nurse only if you asked them to open your records. If you did not, ignore this email: nothing opens without the code.
+
+Cradlewell`,
+    html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;color:#1B1F2E">
+  <h2 style="color:#5B4BB7;margin:0 0 12px">Your access code</h2>
+  <p>Your nurse asked to open your baby's records in the Cradlewell app. Give them this code:</p>
+  <p style="font-size:32px;font-weight:bold;letter-spacing:8px;margin:16px 0;color:#1B1F2E">${code}</p>
+  <p>It expires in 5 minutes.</p>
+  <p style="color:#5A6690;font-size:13px">Share it only if you asked your nurse to open your records. If you did not, ignore this email: nothing opens without the code.</p>
+  <p style="color:#5A6690;font-size:13px">Cradlewell</p>
+</div>`,
+  }),
   password_reset: (code) => ({
     subject: `${code} is your Cradlewell Bloom password reset code`,
     text: `Your Cradlewell Bloom password reset code is ${code}.\n\nIt expires in 5 minutes. Enter it in the app to choose a new password.\n\nIf you did not ask to reset your password, you can ignore this email: your password stays the same.\n\nCradlewell Bloom · care@cradlewell.com`,
@@ -55,6 +73,25 @@ export async function issueOtp({ purpose, userId, clientId = null, phone, email 
   if (recent.length && recent[0].age < cooldown) {
     const wait = cooldown - recent[0].age;
     throw tooMany('otp_cooldown', `Please wait ${wait} second${wait === 1 ? '' : 's'} before requesting another code.`);
+  }
+
+  // At most OTP_DAILY_LIMIT codes to the same email (or phone) in 24 hours, whoever asks and for
+  // whatever purpose: protects the parent's inbox and the sending account's daily quota.
+  const limit = config.otpDailyLimit;
+  if (limit > 0) {
+    const [sent] = await authDb.query(
+      `SELECT created_at, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), created_at + INTERVAL 1 DAY) AS frees_in
+         FROM otp_codes WHERE phone = ? AND created_at > UTC_TIMESTAMP() - INTERVAL 1 DAY
+        ORDER BY id DESC LIMIT ?`,
+      [to, limit]
+    );
+    if (sent.length >= limit) {
+      // The oldest of the last `limit` codes leaves the 24-hour window first.
+      const hours = Math.max(1, Math.ceil(Number(sent[sent.length - 1].frees_in) / 3600));
+      const where = email ? 'this email address' : 'this phone number';
+      throw tooMany('otp_daily_limit',
+        `Only ${limit} codes can be sent to ${where} in a day. Please try again in ${hours} hour${hours === 1 ? '' : 's'}, or use the last code that was sent.`);
+    }
   }
 
   const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');

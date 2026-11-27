@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { clientsDb } from '../db.js';
+import { authDb, clientsDb } from '../db.js';
 import { issueOtp, verifyOtp } from '../otp.js';
-import { requireAuth, requireNurse, setSessionClient } from '../sessions.js';
+import { requireAuth, requireNurse, setSessionClient, hasClientAccess, grantClientAccess, markClientOpened } from '../sessions.js';
 import { ApiError, notFound, forbidden, conflict, badRequest } from '../errors.js';
 import { config } from '../config.js';
-import { requirePhone, requireOtp, maskPhone } from '../validation.js';
+import { requirePhone, requireOtp, requireEmail, maskPhone, maskEmail } from '../validation.js';
 import { limiter } from '../rateLimit.js';
 
 // Clients are shared by all nurses: one nurse serves many clients, so a client is opened by
@@ -20,35 +20,67 @@ function requireClientName(value) {
 }
 
 async function findClient(phone) {
-  const [rows] = await clientsDb.query('SELECT id, name, phone FROM clients WHERE phone = ?', [phone]);
+  const [rows] = await clientsDb.query('SELECT id, name, phone, user_id, email FROM clients WHERE phone = ?', [phone]);
   if (!rows[0]) throw notFound('client_not_found', 'No client is registered with this phone number.');
   return rows[0];
 }
 
 const publicClient = (c) => ({ id: c.id, name: c.name, phoneMasked: maskPhone(c.phone) });
 
-// Opens the client for this session, or (with OTP on) texts the client a code first.
-async function openOrSendCode(req, res, client, status = 200) {
-  if (!config.otpEnabled) {
+// Where a family's access code is emailed: the parent's own account email when they have signed
+// up (Google or a password, so it is theirs), otherwise the email confirmed for this family.
+async function familyEmail(client) {
+  const [rows] = await authDb.query(
+    `SELECT email FROM users WHERE role = 'client' AND verification_status = 'verified' AND (id = ? OR phone = ?)
+      ORDER BY id = ? DESC LIMIT 1`,
+    [client.user_id ?? 0, client.phone, client.user_id ?? 0]
+  );
+  return rows[0]?.email || client.email || null;
+}
+
+// Opens the client for this session, or first sends the family a code (by email or SMS).
+// `givenEmail`: the parent's email typed by the nurse, used only when the family has none yet;
+// it is saved once the parent's code proves it reached them.
+async function openOrSendCode(req, res, client, status = 200, givenEmail = null) {
+  const channel = config.clientCodeChannel;
+  // Off, or this nurse already entered this family's code and the access is still active.
+  if (channel === 'off' || await hasClientAccess(req.auth.userId, client.id)) {
+    if (channel !== 'off') await markClientOpened(req.auth.userId, client.id);
     await setSessionClient(req.auth.sessionId, client.id);
     return res.status(status).json({ otpRequired: false, client: publicClient(client) });
   }
+  if (channel === 'sms') {
+    const { expiresInSeconds } = await issueOtp({
+      purpose: 'client_access', userId: req.auth.userId, clientId: client.id, phone: client.phone,
+    });
+    return res.status(status).json({ otpRequired: true, sentTo: 'phone', phoneMasked: maskPhone(client.phone), expiresInSeconds });
+  }
+  const email = (await familyEmail(client)) || givenEmail;
+  if (!email) {
+    throw conflict('email_needed', "This family has no email yet. Enter the parent's email to send them a code.");
+  }
   const { expiresInSeconds } = await issueOtp({
-    purpose: 'client_access', userId: req.auth.userId, clientId: client.id, phone: client.phone,
+    purpose: 'client_access', userId: req.auth.userId, clientId: client.id, phone: client.phone, email,
   });
-  res.status(status).json({ otpRequired: true, phoneMasked: maskPhone(client.phone), expiresInSeconds });
+  res.status(status).json({ otpRequired: true, sentTo: 'email', emailMasked: maskEmail(email), expiresInSeconds });
 }
+
+const optionalEmail = (v) => (v === undefined || v === null || v === '' ? null : requireEmail(v));
 
 // 3a. An existing client: look it up by phone number and open its records.
 clientRouter.post('/request-otp', limiter('client-lookup', 30), async (req, res) => {
   const client = await findClient(requirePhone(req.body?.phone));
-  await openOrSendCode(req, res, client);
+  await openOrSendCode(req, res, client, 200, optionalEmail(req.body?.email));
 });
 
 // 3a'. A new client: no client has this phone number yet, so create it with the name given.
 clientRouter.post('/', limiter('client-create', 20), async (req, res) => {
   const phone = requirePhone(req.body?.phone);
   const name = requireClientName(req.body?.name);
+  const email = optionalEmail(req.body?.email);
+  if (config.clientCodeChannel === 'email' && !email) {
+    throw badRequest('email_needed', "Enter the parent's email. We'll send them a code to confirm.");
+  }
   let result;
   try {
     [result] = await clientsDb.query('INSERT INTO clients (name, phone) VALUES (?, ?)', [name, phone]);
@@ -59,21 +91,68 @@ clientRouter.post('/', limiter('client-create', 20), async (req, res) => {
     }
     throw err;
   }
-  await openOrSendCode(req, res, { id: result.insertId, name, phone }, 201);
+  await openOrSendCode(req, res, { id: result.insertId, name, phone, user_id: null, email: null }, 201, email);
 });
 
 // 3b. With OTP on: verify the client's code, then open the client's records.
 clientRouter.post('/verify-otp', limiter('otp-verify', 20), async (req, res) => {
-  if (!config.otpEnabled) throw new ApiError(410, 'otp_disabled', 'Verification codes are switched off.');
+  if (config.clientCodeChannel === 'off') throw new ApiError(410, 'otp_disabled', 'Verification codes are switched off.');
   const phone = requirePhone(req.body?.phone);
   const code = requireOtp(req.body?.otp);
   const client = await findClient(phone);
-  const otp = await verifyOtp({ purpose: 'client_access', userId: req.auth.userId, phone, code });
+  // The code is checked against where it was sent (this family's phone, or an email address).
+  const [sent] = await authDb.query(
+    `SELECT phone AS sent_to FROM otp_codes
+      WHERE user_id = ? AND purpose = 'client_access' AND client_id = ? AND consumed_at IS NULL
+      ORDER BY id DESC LIMIT 1`,
+    [req.auth.userId, client.id]
+  );
+  if (!sent[0]) throw badRequest('otp_not_found', 'This code is no longer valid. Request a new code.');
+  const to = sent[0].sent_to;
+  const otp = to.includes('@')
+    ? await verifyOtp({ purpose: 'client_access', userId: req.auth.userId, email: to, code })
+    : await verifyOtp({ purpose: 'client_access', userId: req.auth.userId, phone, code });
   if (Number(otp.client_id) !== Number(client.id)) {
     throw forbidden('client_mismatch', 'This code was issued for a different client. Request a new code.');
   }
+  // The parent received the code there, so that email is theirs: use it for the next codes.
+  if (to.includes('@') && !client.email) {
+    await clientsDb.query('UPDATE clients SET email = ? WHERE id = ? AND email IS NULL', [to, client.id]);
+  }
+  await grantClientAccess(req.auth.userId, client.id);
   await setSessionClient(req.auth.sessionId, client.id);
   res.json({ client: publicClient(client) });
+});
+
+// The 10 families this nurse most recently opened (verified before), newest first. Only these are
+// listed or searchable, so a nurse never sees other families' names. They open without a code.
+// A family stays in the list for 30 days after this nurse last tracked something for its babies
+// (the last entry this nurse logged), or after the nurse first verified it if nothing is logged
+// yet. Care that ended on 30 Oct drops off the list on 29 Nov; the number still opens it.
+const RECENT_FAMILY_DAYS = 30;
+
+clientRouter.get('/mine', async (req, res) => {
+  const [rows] = await clientsDb.query(
+    `SELECT id, name, phone, last_tracked,
+            GREATEST(COALESCE(last_tracked, granted_at), granted_at) AS last_activity
+       FROM (
+         SELECT c.id, c.name, c.phone, a.granted_at,
+                (SELECT MAX(r.updated_at) FROM monitoring_records r JOIN babies b ON b.id = r.baby_id
+                  WHERE b.client_id = c.id AND r.updated_by = a.user_id) AS last_tracked
+           FROM client_access a JOIN clients c ON c.id = a.client_id
+          WHERE a.user_id = ? AND a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > UTC_TIMESTAMP())
+       ) f
+     HAVING last_activity > UTC_TIMESTAMP() - INTERVAL ? DAY
+     ORDER BY last_activity DESC
+     LIMIT 10`,
+    [req.auth.userId, RECENT_FAMILY_DAYS]
+  );
+  res.json({
+    clients: rows.map((c) => ({
+      id: c.id, name: c.name, phone: c.phone, phoneMasked: maskPhone(c.phone),
+      lastTracked: c.last_tracked, codeNeeded: false,
+    })),
+  });
 });
 
 // Leaves the current client without logging out (to switch to another client).

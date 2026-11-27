@@ -88,6 +88,7 @@ export default function TemperatureScreen({ navigation }) {
           placeholder="e.g. after bath, fussy"
           placeholderTextColor={C.textMuted}
           multiline
+          maxLength={1000}
         />
         <PrimaryButton label="Save reading" onPress={save} disabled={!plausible} />
       </Card>

@@ -1,8 +1,11 @@
 // The flow with one-time codes switched off (OTP_ENABLED=false):
 // Registration -> Login -> Client phone -> monitoring data, with no codes at any step.
 process.env.OTP_ENABLED = 'false';
+process.env.CLIENT_CODE_CHANNEL = 'off';
 process.env.SMS_PROVIDER = 'memory';
+process.env.EMAIL_PROVIDER = 'memory';
 process.env.DISABLE_RATE_LIMIT = 'true';
+process.env.NURSE_APPROVAL = 'false';
 process.env.NODE_ENV = 'test';
 
 import { test, before, after } from 'node:test';
@@ -38,6 +41,8 @@ before(async () => {
 
 after(async () => {
   if (clientIds.length) await clientsDb.query('DELETE FROM clients WHERE id IN (?)', [clientIds]);
+  // Every family on this run's phone numbers, including ones a parent's sign-up created.
+  await clientsDb.query('DELETE FROM clients WHERE phone LIKE ?', [`+9197${uniq.slice(0, 7)}%`]);
   await authDb.query('DELETE FROM users WHERE email IN (?)', [[email, otherEmail, `erin+nootp${uniq}@example.com`, ...extraEmails]]);
   server.close();
   await closePools();
@@ -190,19 +195,20 @@ test('a client (parent) account logs in straight to its own records', async () =
   assert.equal(again.body.client.id, login.body.client.id);
 });
 
-test('a parent whose number a nurse already registered sees that client', async () => {
+test("with codes off, nobody can take a nurse-registered family by signing up with its number", async () => {
   const password = 'Passw0rd!';
-  const parentEmail = `parent2+nootp${uniq}@example.com`;
-  extraEmails.push(parentEmail);
-  // phone(6) is "New Family", created by a nurse in an earlier test, with baby Ira.
-  await call('POST', '/auth/register', {
-    body: { fullName: 'Ira Parent', phone: phone(6), email: parentEmail, password, confirmPassword: password, role: 'client' },
+  const strangerEmail = `stranger+nootp${uniq}@example.com`;
+  extraEmails.push(strangerEmail);
+  // phone(6) is "New Family", registered by a nurse (no parent account yet), with baby Ira.
+  const reg = await call('POST', '/auth/register', {
+    body: { fullName: 'Stranger', phone: phone(6), email: strangerEmail, password, confirmPassword: password, role: 'client' },
   });
-  const login = await call('POST', '/auth/login', { body: { email: parentEmail, password, role: 'client' } });
-  assert.equal(login.status, 200);
-  assert.equal(login.body.client.name, 'New Family');
-  const babies = await call('GET', '/data/babies', { token: login.body.token });
-  assert.deepEqual(babies.body.items, [{ id: `nb${uniq}`, name: 'Ira' }]);
+  assert.equal(reg.status, 403);
+  assert.equal(reg.body.error.code, 'family_needs_check');
+  const [none] = await authDb.query('SELECT id FROM users WHERE email = ?', [strangerEmail]);
+  assert.equal(none.length, 0, 'no account made');
+  const [[row]] = await clientsDb.query('SELECT user_id FROM clients WHERE phone = ?', [phone(6)]);
+  assert.equal(row.user_id, null, 'family not handed over');
 });
 
 test('an account left unverified while codes were on is activated at login', async () => {

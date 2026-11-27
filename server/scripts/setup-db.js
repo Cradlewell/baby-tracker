@@ -31,16 +31,24 @@ const MIGRATIONS = {
   '01_auth.sql': [
     { table: 'users', column: 'role', ddl: "ADD COLUMN role ENUM('nurse', 'client') NOT NULL DEFAULT 'nurse' AFTER verification_status" },
     { table: 'users', column: 'google_sub', ddl: 'ADD COLUMN google_sub VARCHAR(64) NULL AFTER role' },
+    // Existing accounts become 'approved', so nobody already working is locked out.
+    { table: 'users', column: 'approval_status', ddl: "ADD COLUMN approval_status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'approved' AFTER google_sub" },
   ],
   '02_clients.sql': [
     { table: 'clients', column: 'user_id', ddl: 'ADD COLUMN user_id BIGINT UNSIGNED NULL AFTER phone, ADD KEY idx_clients_user (user_id)' },
+    { table: 'clients', column: 'email', ddl: 'ADD COLUMN email VARCHAR(255) NULL AFTER user_id' },
+    { table: 'client_access', column: 'opened_at', ddl: 'ADD COLUMN opened_at DATETIME NULL AFTER revoked_at' },
   ],
 };
 
 // Changes that are safe to run every time (they set a column to its current definition).
 const ALWAYS = {
+  '02_clients.sql': [
+    "ALTER TABLE client_access MODIFY COLUMN expires_at DATETIME NULL COMMENT 'NULL: never expires'",
+  ],
   '01_auth.sql': [
     "ALTER TABLE otp_codes MODIFY COLUMN purpose ENUM('registration', 'client_access', 'password_reset') NOT NULL",
+    "ALTER TABLE users MODIFY COLUMN role ENUM('nurse', 'client', 'admin') NOT NULL DEFAULT 'nurse'",
     // Password reset codes are sent to an email address, which is longer than a phone number.
     "ALTER TABLE otp_codes MODIFY COLUMN phone VARCHAR(255) NOT NULL COMMENT 'phone number or email address the code was sent to'",
   ],
