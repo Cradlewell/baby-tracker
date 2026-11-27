@@ -51,20 +51,9 @@ export const config = {
   trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
   corsOrigins: (process.env.CORS_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean),
 
-  authDb: {
-    host: process.env.AUTH_DB_HOST || '127.0.0.1',
-    port: Number(process.env.AUTH_DB_PORT || 3306),
-    user: required('AUTH_DB_USER'),
-    password: required('AUTH_DB_PASSWORD'),
-    database: process.env.AUTH_DB_NAME || 'cradlewell_auth',
-  },
-  clientsDb: {
-    host: process.env.CLIENTS_DB_HOST || '127.0.0.1',
-    port: Number(process.env.CLIENTS_DB_PORT || 3306),
-    user: required('CLIENTS_DB_USER'),
-    password: required('CLIENTS_DB_PASSWORD'),
-    database: process.env.CLIENTS_DB_NAME || 'cradlewell_clients',
-  },
+  // Supabase (PostgreSQL). The app's tables live in the schema DB_SCHEMA.
+  databaseUrl: required('DATABASE_URL'),
+  dbSchema: process.env.DB_SCHEMA || 'app',
 
   otpSecret,
   // When false, sign-up activates the account immediately and a client opens as soon as its

@@ -78,7 +78,7 @@ async function visitsSince(days) {
 
 // Client ID shown to the admin: CW-C-0001.
 const clientCode = (id) => `CW-C-${String(id).padStart(4, '0')}`;
-const ACTIVE_ACCESS = 'revoked_at IS NULL AND (expires_at IS NULL OR expires_at > UTC_TIMESTAMP())';
+const ACTIVE_ACCESS = 'revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())';
 
 async function nurseNames(ids) {
   if (!ids.length) return new Map();
@@ -93,8 +93,8 @@ adminRouter.get('/overview', async (_req, res) => {
     clientsDb.query('SELECT COUNT(*) AS n FROM clients'),
     clientsDb.query('SELECT COUNT(*) AS n FROM babies'),
     clientsDb.query(
-      `SELECT DATE(created_at + INTERVAL 330 MINUTE) AS day, COUNT(*) AS n FROM monitoring_records
-        WHERE created_at > UTC_TIMESTAMP() - INTERVAL ? DAY GROUP BY day`, [WEEKS * 7 + 7]
+      `SELECT (created_at AT TIME ZONE 'Asia/Kolkata')::date AS day, COUNT(*) AS n FROM monitoring_records
+        WHERE created_at > now() - make_interval(days => ?) GROUP BY day`, [WEEKS * 7 + 7]
     ),
     visitsSince(WEEKS * 7 + 7),
     lastActiveByUser(),
@@ -123,10 +123,10 @@ adminRouter.get('/overview', async (_req, res) => {
 
   const [[pairs], [crashes]] = await Promise.all([
     clientsDb.query(`SELECT DISTINCT client_id, user_id FROM client_access WHERE ${ACTIVE_ACCESS}`),
-    authDb.query('SELECT COUNT(*) AS n FROM crash_reports WHERE created_at > UTC_TIMESTAMP() - INTERVAL 7 DAY'),
+    authDb.query('SELECT COUNT(*) AS n FROM crash_reports WHERE created_at > now() - make_interval(days => 7)'),
   ]);
   const assisted = new Set(pairs.map((p) => Number(p.client_id)));
-  const [[newFamilies]] = await clientsDb.query('SELECT COUNT(*) AS n FROM clients WHERE created_at > UTC_TIMESTAMP() - INTERVAL 7 DAY');
+  const [[newFamilies]] = await clientsDb.query('SELECT COUNT(*) AS n FROM clients WHERE created_at > now() - make_interval(days => 7)');
 
   res.json({
     care: { nurseAssisted: assisted.size, selfTracking: Math.max(0, Number(fam.n) - assisted.size) },
@@ -159,7 +159,7 @@ adminRouter.get('/overview', async (_req, res) => {
 adminRouter.get('/nurses', async (_req, res) => {
   const [[nurses], [access], visits, lastActive] = await Promise.all([
     authDb.query("SELECT id, full_name, email, phone, created_at FROM users WHERE role = 'nurse' AND verification_status = 'verified'"),
-    clientsDb.query('SELECT user_id, COUNT(*) AS n FROM client_access WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > UTC_TIMESTAMP()) GROUP BY user_id'),
+    clientsDb.query('SELECT user_id, COUNT(*) AS n FROM client_access WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now()) GROUP BY user_id'),
     visitsSince(30),
     lastActiveByUser(),
   ]);
@@ -185,7 +185,7 @@ adminRouter.get('/families', async (_req, res) => {
     clientsDb.query('SELECT id, name, phone, email, user_id, created_at FROM clients'),
     clientsDb.query('SELECT client_id, COUNT(*) AS n FROM babies GROUP BY client_id'),
     clientsDb.query('SELECT b.client_id, MAX(r.updated_at) AS last, COUNT(*) AS n FROM monitoring_records r JOIN babies b ON b.id = r.baby_id GROUP BY b.client_id'),
-    clientsDb.query('SELECT client_id, COUNT(*) AS n FROM client_access WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > UTC_TIMESTAMP()) GROUP BY client_id'),
+    clientsDb.query('SELECT client_id, COUNT(*) AS n FROM client_access WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now()) GROUP BY client_id'),
     visitsSince(30),
     clientsDb.query(`SELECT client_id, user_id FROM client_access WHERE ${ACTIVE_ACCESS}`),
     clientsDb.query('SELECT id, client_id, name FROM babies ORDER BY position DESC, created_at'),
@@ -223,7 +223,7 @@ adminRouter.get('/parents', async (_req, res) => {
   const ids = parents.map((p) => p.id);
   const [[fams], [written]] = ids.length ? await Promise.all([
     clientsDb.query('SELECT c.user_id, c.name, (SELECT COUNT(*) FROM babies b WHERE b.client_id = c.id) AS babies FROM clients c WHERE c.user_id IN (?)', [ids]),
-    clientsDb.query('SELECT updated_by, COUNT(*) AS n FROM monitoring_records WHERE updated_by IN (?) AND updated_at > UTC_TIMESTAMP() - INTERVAL 7 DAY GROUP BY updated_by', [ids]),
+    clientsDb.query('SELECT updated_by, COUNT(*) AS n FROM monitoring_records WHERE updated_by IN (?) AND updated_at > now() - make_interval(days => 7) GROUP BY updated_by', [ids]),
   ]) : [[[]], [[]]];
   const fam = new Map(fams.map((f) => [Number(f.user_id), f]));
   const wrote = new Map(written.map((w) => [Number(w.updated_by), Number(w.n)]));
@@ -252,7 +252,7 @@ adminRouter.get('/assignments', async (_req, res) => {
               (SELECT MAX(r.updated_at) FROM monitoring_records r JOIN babies b ON b.id = r.baby_id
                 WHERE b.client_id = a.client_id AND r.updated_by = a.user_id) AS last_entry
          FROM client_access a JOIN clients c ON c.id = a.client_id
-        WHERE a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > UTC_TIMESTAMP())`
+        WHERE a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > now())`
     ),
     visitsSince(30),
   ]);
@@ -292,10 +292,10 @@ adminRouter.post('/clients', async (req, res) => {
   const phone = requirePhone(req.body?.phone);
   const email = req.body?.email ? requireEmail(req.body.email) : null;
   try {
-    const [r] = await clientsDb.query('INSERT INTO clients (name, phone, email, email_trusted) VALUES (?, ?, ?, ?)', [name, phone, email, email ? 1 : 0]);
+    const [r] = await clientsDb.query('INSERT INTO clients (name, phone, email, email_trusted) VALUES (?, ?, ?, ?) RETURNING id', [name, phone, email, !!email]);
     res.status(201).json({ id: r.insertId, code: clientCode(r.insertId), name, phoneMasked: maskPhone(phone) });
   } catch (err) {
-    if (err.code === 'ER_DUP_ENTRY') throw conflict('client_exists', 'A family with this phone number is already registered.');
+    if (err.code === '23505') throw conflict('client_exists', 'A family with this phone number is already registered.');
     throw err;
   }
 });
@@ -321,7 +321,7 @@ adminRouter.post('/nurses', async (req, res) => {
   const hash = await bcrypt.hash(password, config.bcryptRounds);
   const [r] = await authDb.query(
     `INSERT INTO users (full_name, phone, email, password_hash, verification_status, verified_at, role)
-     VALUES (?, ?, ?, ?, 'verified', UTC_TIMESTAMP(), 'nurse')`, [name, phone, email, hash]
+     VALUES (?, ?, ?, ?, 'verified', now(), 'nurse') RETURNING id`, [name, phone, email, hash]
   );
   res.status(201).json({ id: r.insertId, name, email, password });
 });

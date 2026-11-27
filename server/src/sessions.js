@@ -12,20 +12,20 @@ export async function createSession(userId, clientId = null) {
   const token = crypto.randomBytes(32).toString('base64url');
   await authDb.query(
     `INSERT INTO sessions (user_id, token_hash, client_id, client_verified_at, expires_at)
-     VALUES (?, ?, ?, IF(? IS NULL, NULL, UTC_TIMESTAMP()), UTC_TIMESTAMP() + INTERVAL ? DAY)`,
-    [userId, hashToken(token), clientId, clientId, config.sessionTtlDays]
+     VALUES (?, ?, ?, ?, now() + make_interval(days => ?))`,
+    [userId, hashToken(token), clientId, clientId == null ? null : new Date(), config.sessionTtlDays]
   );
   return token;
 }
 
 export async function revokeSession(sessionId) {
-  await authDb.query('UPDATE sessions SET revoked_at = UTC_TIMESTAMP() WHERE id = ? AND revoked_at IS NULL', [sessionId]);
+  await authDb.query('UPDATE sessions SET revoked_at = now() WHERE id = ? AND revoked_at IS NULL', [sessionId]);
 }
 
 export async function setSessionClient(sessionId, clientId) {
   await authDb.query(
-    'UPDATE sessions SET client_id = ?, client_verified_at = IF(? IS NULL, NULL, UTC_TIMESTAMP()) WHERE id = ?',
-    [clientId, clientId, sessionId]
+    'UPDATE sessions SET client_id = ?, client_verified_at = ? WHERE id = ?',
+    [clientId, clientId == null ? null : new Date(), sessionId]
   );
 }
 
@@ -43,14 +43,14 @@ export async function requireAuth(req, _res, next) {
   const [rows] = await authDb.query(
     `SELECT s.id, s.user_id, s.client_id, u.full_name, u.email, u.phone, u.role, u.verification_status, u.google_sub
        FROM sessions s JOIN users u ON u.id = s.user_id
-      WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > UTC_TIMESTAMP()`,
+      WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > now()`,
     [hashToken(match[1])]
   );
   const s = rows[0];
   if (!s || s.verification_status !== 'verified') {
     return next(unauthorized('session_expired', 'Your session has ended. Please log in again.'));
   }
-  authDb.query('UPDATE sessions SET last_used_at = UTC_TIMESTAMP() WHERE id = ?', [s.id]).catch(() => {});
+  authDb.query('UPDATE sessions SET last_used_at = now() WHERE id = ?', [s.id]).catch(() => {});
 
   req.auth = {
     sessionId: s.id,
@@ -76,7 +76,7 @@ export function requireNurse(req, _res, next) {
 export const FAMILY_NEEDS_CHECK = 'A nurse has already registered a family with your phone number. To open it, tap "Continue with Google" with the email Cradlewell has for your family, or write to care@cradlewell.com.';
 // Only an email the admin entered for a family is trusted to hand it over: one a nurse typed could
 // be the nurse's own.
-const TRUSTED_EMAIL = 'IF(email_trusted, email, NULL) AS email';
+const TRUSTED_EMAIL = 'CASE WHEN email_trusted THEN email END AS email';
 
 // The parent proved this phone number with an SMS code: a family a nurse registered on it
 // (and no parent owns yet) becomes theirs.
@@ -108,13 +108,13 @@ export async function openOwnClient(user) {
   }
   try {
     const [res] = await clientsDb.query(
-      'INSERT INTO clients (name, phone, user_id) VALUES (?, ?, ?)',
+      'INSERT INTO clients (name, phone, user_id) VALUES (?, ?, ?) RETURNING id',
       [user.full_name, user.phone, user.id]
     );
     return { id: res.insertId, name: user.full_name, phone: user.phone };
   } catch (err) {
     // Created by a nurse at the same moment: check that one like any other existing family.
-    if (err.code !== 'ER_DUP_ENTRY') throw err;
+    if (err.code !== '23505') throw err;
     return openOwnClient(user);
   }
 }
@@ -123,8 +123,8 @@ export async function openOwnClient(user) {
 // A nurse enters a family's code once; after that the family opens without a code (on any phone
 // the nurse logs in on) until the access expires or is revoked. Parents never need it.
 const codesOn = () => config.clientCodeChannel !== 'off';
-const ACTIVE = '(a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > UTC_TIMESTAMP()))';
-const REMEMBERED = `(${ACTIVE} AND a.opened_at > UTC_TIMESTAMP() - INTERVAL ? DAY)`;
+const ACTIVE = '(a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > now()))';
+const REMEMBERED = `(${ACTIVE} AND a.opened_at > now() - make_interval(days => ?))`;
 
 export async function hasClientAccess(userId, clientId) {
   const [rows] = await clientsDb.query(
@@ -139,16 +139,16 @@ export async function grantClientAccess(userId, clientId) {
   const days = config.clientAccessDays;
   await clientsDb.query(
     `INSERT INTO client_access (user_id, client_id, granted_at, expires_at, opened_at)
-     VALUES (?, ?, UTC_TIMESTAMP(), IF(? > 0, UTC_TIMESTAMP() + INTERVAL ? DAY, NULL), UTC_TIMESTAMP())
-     ON DUPLICATE KEY UPDATE granted_at = VALUES(granted_at), expires_at = VALUES(expires_at),
-                             opened_at = VALUES(opened_at), revoked_at = NULL`,
-    [userId, clientId, days, days]
+     VALUES (?, ?, now(), ?, now())
+     ON CONFLICT (user_id, client_id) DO UPDATE SET granted_at = EXCLUDED.granted_at, expires_at = EXCLUDED.expires_at,
+                             opened_at = EXCLUDED.opened_at, revoked_at = NULL`,
+    [userId, clientId, days > 0 ? new Date(Date.now() + days * 86400000) : null]
   );
 }
 
 // The nurse entered this family's number again: the 30 days of opening by itself start again.
 export async function markClientOpened(userId, clientId) {
-  await clientsDb.query('UPDATE client_access SET opened_at = UTC_TIMESTAMP() WHERE user_id = ? AND client_id = ?', [userId, clientId]);
+  await clientsDb.query('UPDATE client_access SET opened_at = now() WHERE user_id = ? AND client_id = ?', [userId, clientId]);
 }
 
 // True while the family should open by itself for this nurse (number entered in the last 30 days).
@@ -182,7 +182,7 @@ function recordVisit(userId, clientId) {
   if (visitSeen.has(key)) return;
   if (visitSeen.size > 5000) visitSeen.clear();
   visitSeen.add(key);
-  clientsDb.query('INSERT IGNORE INTO client_visits (user_id, client_id, visit_date) VALUES (?, ?, ?)', [userId, clientId, day])
+  clientsDb.query('INSERT INTO client_visits (user_id, client_id, visit_date) VALUES (?, ?, ?) ON CONFLICT DO NOTHING', [userId, clientId, day])
     .catch(() => visitSeen.delete(key));
 }
 

@@ -35,7 +35,7 @@ try {
       const [name, rawPhone] = args;
       const phone = normalizePhone(rawPhone || '');
       if (!name || !phone) throw new Error('Usage: create-client "<client name>" <client phone>');
-      const [res] = await clientsDb.query('INSERT INTO clients (name, phone) VALUES (?, ?)', [name.trim(), phone]);
+      const [res] = await clientsDb.query('INSERT INTO clients (name, phone) VALUES (?, ?) RETURNING id', [name.trim(), phone]);
       console.log(`Created client #${res.insertId}: ${name.trim()} (${phone})`);
       break;
     }
@@ -67,7 +67,7 @@ try {
       if (!res.affectedRows) throw new Error(`No user with email ${email}`);
       // Their open sessions belong to the old role: end them so the next login uses the new one.
       await authDb.query(
-        'UPDATE sessions s JOIN users u ON u.id = s.user_id SET s.revoked_at = UTC_TIMESTAMP() WHERE u.email = ? AND s.revoked_at IS NULL',
+        'UPDATE sessions s SET revoked_at = now() FROM users u WHERE u.id = s.user_id AND u.email = ? AND s.revoked_at IS NULL',
         [email]
       );
       console.log(`${email} is now a ${role} account. They must log in again, choosing "${role === 'client' ? 'Parent' : 'Nurse'}".`);
@@ -79,7 +79,7 @@ try {
       if (args[0] && !phone) throw new Error('Usage: list-access [<client phone>]');
       const [rows] = await clientsDb.query(
         `SELECT a.user_id, c.name AS client, c.phone, a.granted_at, a.expires_at, a.revoked_at,
-                (a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > UTC_TIMESTAMP())) AS active, a.opened_at
+                (a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > now())) AS active, a.opened_at
            FROM client_access a JOIN clients c ON c.id = a.client_id
           ${phone ? 'WHERE c.phone = ?' : ''} ORDER BY c.id, a.granted_at`,
         phone ? [phone] : []
@@ -97,7 +97,7 @@ try {
       if (!who || !phone) throw new Error('Usage: revoke-access <nurse email | all> <client phone>');
       const [clients] = await clientsDb.query('SELECT id FROM clients WHERE phone = ?', [phone]);
       if (!clients[0]) throw new Error(`No client with phone ${phone}`);
-      let sql = 'UPDATE client_access SET revoked_at = UTC_TIMESTAMP() WHERE client_id = ? AND revoked_at IS NULL';
+      let sql = 'UPDATE client_access SET revoked_at = now() WHERE client_id = ? AND revoked_at IS NULL';
       const params = [clients[0].id];
       if (who !== 'all') {
         const [u] = await authDb.query('SELECT id FROM users WHERE email = ?', [who.trim().toLowerCase()]);
@@ -117,7 +117,7 @@ try {
            FROM crash_reports ORDER BY id DESC LIMIT ?`, [n]
       );
       console.table(rows);
-      const [[agg]] = await authDb.query('SELECT COUNT(*) AS last7 FROM crash_reports WHERE created_at > UTC_TIMESTAMP() - INTERVAL 7 DAY');
+      const [[agg]] = await authDb.query('SELECT COUNT(*) AS last7 FROM crash_reports WHERE created_at > now() - make_interval(days => 7)');
       console.log(`${agg.last7} error report(s) in the last 7 days. Full details: SELECT * FROM crash_reports WHERE id = <id>;`);
       break;
     }
@@ -133,13 +133,13 @@ try {
         const placeholder = `admin:${crypto.randomBytes(6).toString('hex')}`;
         await authDb.query(
           `INSERT INTO users (full_name, phone, email, password_hash, verification_status, verified_at, role)
-           VALUES (?, ?, ?, ?, 'verified', UTC_TIMESTAMP(), 'admin')`,
+           VALUES (?, ?, ?, ?, 'verified', now(), 'admin')`,
           [name, placeholder, email, hash]
         );
       } else {
         const [res] = await authDb.query("UPDATE users SET password_hash = ? WHERE email = ? AND role = 'admin'", [hash, email]);
         if (!res.affectedRows) throw new Error(`No admin account with email ${email}`);
-        await authDb.query('UPDATE sessions s JOIN users u ON u.id = s.user_id SET s.revoked_at = UTC_TIMESTAMP() WHERE u.email = ? AND s.revoked_at IS NULL', [email]);
+        await authDb.query('UPDATE sessions s SET revoked_at = now() FROM users u WHERE u.id = s.user_id AND u.email = ? AND s.revoked_at IS NULL', [email]);
       }
       console.log(`Admin dashboard login\n  Email:    ${email}\n  Password: ${password}\nKeep this password safe: it is shown only now. Open /admin on the server to log in.`);
       break;
@@ -155,7 +155,7 @@ try {
       console.log('Commands: create-client "<name>" <phone> | list-clients | set-family-email <phone> <email> | list-users | set-role <email> <nurse|client> | list-access [<phone>] | revoke-access <nurse email|all> <phone> | list-crashes [<n>] | create-admin <email> ["<name>"] | reset-admin-password <email>');
   }
 } catch (err) {
-  console.error(`Error: ${err.code === 'ER_DUP_ENTRY' ? 'A client with that phone number already exists.' : err.message}`);
+  console.error(`Error: ${err.code === '23505' ? 'A client with that phone number already exists.' : err.message}`);
   process.exitCode = 1;
 } finally {
   await closePools();

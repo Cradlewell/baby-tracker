@@ -48,7 +48,8 @@ function requireApproved(user) {
 // OTP the account is active at once; with OTP it waits for the phone code.
 // Two sign-ups for the same email or phone at once (a double tap): one wins, the other replaced
 // it or hit the same rows. Answer "try again" instead of a server error.
-const RACE_ERRORS = new Set(['ER_DUP_ENTRY', 'ER_NO_REFERENCED_ROW_2', 'ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT']);
+// PostgreSQL codes: unique violation, foreign key violation, deadlock, lock not available.
+const RACE_ERRORS = new Set(['23505', '23503', '40P01', '55P03']);
 async function signupRace(fn) {
   try {
     return await fn();
@@ -90,7 +91,7 @@ async function insertUser({ name, phoneE164, emailLc, passwordHash, role, google
 
     const [result] = await conn.query(
       `INSERT INTO users (full_name, phone, email, password_hash, verification_status, verified_at, role, google_sub, approval_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [name, phoneE164, emailLc, passwordHash,
         verifiedNow ? 'verified' : 'pending', verifiedNow ? new Date() : null, role, googleSub,
         needsApproval(role) ? 'pending' : 'approved']
@@ -164,7 +165,7 @@ authRouter.post('/register/verify', requireOtpEnabled, limiter('otp-verify', 20)
   }
   await verifyOtp({ purpose: 'registration', userId: user.id, phone: user.phone, code });
   await authDb.query(
-    "UPDATE users SET verification_status = 'verified', verified_at = UTC_TIMESTAMP() WHERE id = ?",
+    "UPDATE users SET verification_status = 'verified', verified_at = now() WHERE id = ?",
     [user.id]
   );
   if (user.role === 'client') await linkFamilyByProvenPhone(user.id, user.phone);
@@ -206,7 +207,7 @@ authRouter.post('/login', limiter('login', 10, 15, LOGIN_LIMIT_MESSAGE), async (
     }
     // Signed up while codes were on but never entered one: with codes off, activate on login.
     await authDb.query(
-      "UPDATE users SET verification_status = 'verified', verified_at = UTC_TIMESTAMP() WHERE id = ?",
+      "UPDATE users SET verification_status = 'verified', verified_at = now() WHERE id = ?",
       [user.id]
     );
   }
@@ -241,7 +242,7 @@ authRouter.post('/google', limiter('login', 10), async (req, res) => {
       throw forbidden('account_not_verified', 'Your phone number is not verified yet. Verify it to finish creating your account.');
     }
     await authDb.query(
-      "UPDATE users SET verification_status = 'verified', verified_at = UTC_TIMESTAMP() WHERE id = ?",
+      "UPDATE users SET verification_status = 'verified', verified_at = now() WHERE id = ?",
       [user.id]
     );
   }
@@ -255,7 +256,7 @@ authRouter.post('/google', limiter('login', 10), async (req, res) => {
     await withTransaction(authDb, async (conn) => {
       await conn.query('UPDATE users SET google_sub = ?, password_hash = ? WHERE id = ? AND google_sub IS NULL',
         [g.sub, newHash, user.id]);
-      await conn.query('UPDATE sessions SET revoked_at = UTC_TIMESTAMP() WHERE user_id = ? AND revoked_at IS NULL', [user.id]);
+      await conn.query('UPDATE sessions SET revoked_at = now() WHERE user_id = ? AND revoked_at IS NULL', [user.id]);
     });
     user.google_sub = g.sub;
   } else if (user.google_sub !== g.sub) {
@@ -306,7 +307,7 @@ authRouter.post('/google/signup/verify', requireOtpEnabled, limiter('otp-verify'
   }
   await verifyOtp({ purpose: 'registration', userId: user.id, phone: user.phone, code });
   await authDb.query(
-    "UPDATE users SET verification_status = 'verified', verified_at = UTC_TIMESTAMP() WHERE id = ?",
+    "UPDATE users SET verification_status = 'verified', verified_at = now() WHERE id = ?",
     [user.id]
   );
   if (user.role === 'client') await linkFamilyByProvenPhone(user.id, user.phone);
@@ -336,7 +337,7 @@ authRouter.post('/password', requireAuth, limiter('password', 10), async (req, r
   await withTransaction(authDb, async (conn) => {
     await conn.query('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, req.auth.userId]);
     await conn.query(
-      'UPDATE sessions SET revoked_at = UTC_TIMESTAMP() WHERE user_id = ? AND id <> ? AND revoked_at IS NULL',
+      'UPDATE sessions SET revoked_at = now() WHERE user_id = ? AND id <> ? AND revoked_at IS NULL',
       [req.auth.userId, req.auth.sessionId]
     );
   });
@@ -367,7 +368,7 @@ authRouter.post('/password/reset', limiter('otp-verify', 20), async (req, res) =
   const newHash = await bcrypt.hash(newPassword, config.bcryptRounds);
   await withTransaction(authDb, async (conn) => {
     await conn.query('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, user.id]);
-    await conn.query('UPDATE sessions SET revoked_at = UTC_TIMESTAMP() WHERE user_id = ? AND revoked_at IS NULL', [user.id]);
+    await conn.query('UPDATE sessions SET revoked_at = now() WHERE user_id = ? AND revoked_at IS NULL', [user.id]);
   });
   res.json({ reset: true });
 });

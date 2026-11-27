@@ -56,7 +56,7 @@ async function applyOrder(conn, table, whereSql, whereArgs, order) {
   const moved = rows.filter((r) => wanted.has(r.id) && wanted.get(r.id) !== r.position);
   for (const part of batches(moved)) {
     await conn.query(
-      `UPDATE ${table} SET position = CASE id ${part.map(() => 'WHEN ? THEN ?').join(' ')} END
+      `UPDATE ${table} SET position = CASE id ${part.map(() => 'WHEN ? THEN ?::int').join(' ')} END
         WHERE ${whereSql} AND id IN (?)`,
       [...part.flatMap((r) => [r.id, wanted.get(r.id)]), ...whereArgs, part.map((r) => r.id)]
     );
@@ -114,7 +114,7 @@ dataRouter.patch('/babies', async (req, res) => {
       for (const part of batches(items)) {
         await conn.query(
           `INSERT INTO babies (id, client_id, name, details, position) VALUES ?
-           ON DUPLICATE KEY UPDATE name = VALUES(name), details = VALUES(details), position = VALUES(position)`,
+           ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, details = EXCLUDED.details, position = EXCLUDED.position`,
           [part.map(({ id, item, json }) => [id, clientId, item.name.trim(), json, pos.get(id) ?? 0])]
         );
       }
@@ -159,7 +159,7 @@ dataRouter.patch('/babies/:babyId/records/:type', async (req, res) => {
     for (const part of batches(items)) {
       await conn.query(
         `INSERT INTO monitoring_records (baby_id, record_type, id, data, position, updated_by) VALUES ?
-         ON DUPLICATE KEY UPDATE data = VALUES(data), position = VALUES(position), updated_by = VALUES(updated_by)`,
+         ON CONFLICT (baby_id, record_type, id) DO UPDATE SET data = EXCLUDED.data, position = EXCLUDED.position, updated_by = EXCLUDED.updated_by`,
         [part.map(({ id, json }) => [babyId, type, id, json, pos.get(id) ?? 0, req.auth.userId])]
       );
     }

@@ -22,7 +22,7 @@ export async function removeExpiredRequests() {
   const days = config.approvalDays;
   const [rows] = await authDb.query(
     `SELECT id, full_name, email FROM users
-      WHERE role = 'nurse' AND approval_status = 'pending' AND created_at < UTC_TIMESTAMP() - INTERVAL ? DAY`, [days]
+      WHERE role = 'nurse' AND approval_status = 'pending' AND created_at < now() - make_interval(days => ?)`, [days]
   );
   if (!rows.length) return 0;
   const [r] = await authDb.query(

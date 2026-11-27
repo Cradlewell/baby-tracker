@@ -24,8 +24,8 @@
     "express-rate-limit": "^8.7.5",
     "google-auth-library": "^9.15.1",
     "helmet": "^8.3.0",
-    "mysql2": "^3.24.6",
-    "nodemailer": "^6.10.1"
+    "nodemailer": "^6.10.1",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "esbuild": "^0.25.12"

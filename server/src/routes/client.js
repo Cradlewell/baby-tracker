@@ -90,10 +90,10 @@ clientRouter.post('/', limiter('client-create', 20), async (req, res) => {
   }
   let result;
   try {
-    [result] = await clientsDb.query('INSERT INTO clients (name, phone) VALUES (?, ?)', [name, phone]);
+    [result] = await clientsDb.query('INSERT INTO clients (name, phone) VALUES (?, ?) RETURNING id', [name, phone]);
   } catch (err) {
     // Registered by someone else in the meantime: never overwrite an existing client.
-    if (err.code === 'ER_DUP_ENTRY') {
+    if (err.code === '23505') {
       throw conflict('client_exists', 'A client with this phone number already exists. Go back and enter the number again.');
     }
     throw err;
@@ -147,9 +147,9 @@ clientRouter.get('/mine', async (req, res) => {
                 (SELECT MAX(r.updated_at) FROM monitoring_records r JOIN babies b ON b.id = r.baby_id
                   WHERE b.client_id = c.id AND r.updated_by = a.user_id) AS last_tracked
            FROM client_access a JOIN clients c ON c.id = a.client_id
-          WHERE a.user_id = ? AND a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > UTC_TIMESTAMP())
+          WHERE a.user_id = ? AND a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > now())
        ) f
-     HAVING last_activity > UTC_TIMESTAMP() - INTERVAL ? DAY
+     WHERE GREATEST(COALESCE(last_tracked, granted_at), granted_at) > now() - make_interval(days => ?)
      ORDER BY last_activity DESC
      LIMIT 10`,
     [req.auth.userId, RECENT_FAMILY_DAYS]

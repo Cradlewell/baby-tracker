@@ -1,6 +1,6 @@
 # Cradlewell Bloom API
 
-Backend for login, client verification and the baby monitoring records. The mobile app talks only to this API; it never connects to MySQL.
+Backend for login, client verification and the baby monitoring records. The mobile app talks only to this API; it never connects to the database (Supabase) directly.
 
 ```
 Registration → OTP to own phone → Login (email + password)
@@ -10,8 +10,9 @@ Registration → OTP to own phone → Login (email + password)
 ## Requirements
 
 - Node.js 22.13 or newer
-- MySQL 8.0 or newer
-- For real SMS: a Twilio account (in development, codes are printed in the terminal instead)
+- A Supabase project (PostgreSQL). Host the API in the same region as the database: every
+  request makes several queries, so the distance between them is what makes the app fast or slow.
+- Real email (SMTP) for access and password-reset codes; SMS (Twilio) only if you switch SMS codes on
 
 ## Set up
 
@@ -19,7 +20,8 @@ Registration → OTP to own phone → Login (email + password)
 cd server
 npm install
 cp .env.example .env        # then edit .env
-npm run db:setup            # creates both databases, their users and tables
+npm run db:setup            # creates the tables in Supabase (schema "app", and "app_test" for tests)
+npm run admin -- create-admin you@example.com
 npm start                   # http://localhost:4000
 ```
 
@@ -27,33 +29,34 @@ In `.env`, set at least:
 
 | Variable | What to put |
 |---|---|
-| `DB_ADMIN_USER` / `DB_ADMIN_PASSWORD` | Your MySQL root (or admin) login. Used only by `npm run db:setup`. |
-| `AUTH_DB_PASSWORD`, `CLIENTS_DB_PASSWORD` | Two new, different, strong passwords. `db:setup` creates the users with them. |
+| `DATABASE_URL` | Supabase -> Connect. "Direct connection" if the server has IPv6, otherwise the "Session pooler" URI. Write `@` in the password as `%40`. |
+| `DATABASE_CA_CERT` | Optional: path to Supabase's CA certificate (Dashboard -> Database -> SSL) so the connection is verified, not only encrypted. |
 | `OTP_SECRET` | A long random string: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
-| `SMS_PROVIDER` | `console` for development, `twilio` for real SMS (required in production). |
-| `TWILIO_*` | Your Twilio Account SID, Auth Token and sending number. |
+| `EMAIL_PROVIDER`, `SMTP_*` | `smtp` and a real mailbox (required in production). |
 
 `.env` is git-ignored. Never commit it.
 
-## The two databases
+## The database
 
-**`cradlewell_auth`** (Database 1: authentication)
+One Supabase database; the tables are in the schema `app` (`sql/schema.sql`). The tests use the
+schema `app_test`, so they never touch real data.
 
 | Table | Contents |
 |---|---|
-| `users` | User ID, full name, phone, email, bcrypt password hash, verification status, created/updated at |
+| `users` | Name, phone, email, bcrypt password hash, role, verification and approval status |
 | `otp_codes` | Keyed hashes of one-time codes, expiry, attempts, when used |
-| `sessions` | SHA-256 hashes of login tokens, the verified client, expiry, logout time |
+| `sessions` | SHA-256 hashes of login tokens, the family opened, expiry, logout time |
+| `crash_reports` | App errors (no user or baby data), kept 90 days |
+| `clients` | Families: name, phone, the parent's account, the email for access codes |
+| `client_access` | Which nurse may open which family without a new code |
+| `client_visits` | One row per nurse, family and day, for the admin dashboard |
+| `babies` | Each baby's profile |
+| `monitoring_records` | Every feeding, sleep, diaper, medicine, growth, vaccination and health entry |
 
-**`cradlewell_clients`** (Database 2: clients and baby monitoring)
-
-| Table | Contents |
-|---|---|
-| `clients` | Client ID, client name, client phone, created/updated at |
-| `babies` | Baby ID, client ID, name and full baby details |
-| `monitoring_records` | Every feeding, sleep, diaper, medicine, growth and vaccination record |
-
-Each database has its own MySQL user with data access (`SELECT/INSERT/UPDATE/DELETE`) to that database only.
+Row-Level Security is on for every table with no policies, and the schema is not exposed through
+Supabase's API, so the `anon` and `authenticated` keys can read nothing. Only this server, using
+the database password, reads and writes data. Never put the database password or the
+`service_role` key in the app.
 
 ## Managing clients
 

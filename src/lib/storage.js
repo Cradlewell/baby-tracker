@@ -5,7 +5,7 @@ import { api, isNetworkError } from './api';
  * Drop-in replacement for AsyncStorage used by the stores.
  *
  * While a client is verified, baby profiles and monitoring records are read from and saved
- * to the backend (MySQL) instead of only the phone. Each value is also cached on the phone,
+ * to the backend (Supabase) instead of only the phone. Each value is also cached on the phone,
  * so the app keeps working offline; changes made offline are marked "pending" and sent
  * automatically later. Everything else (settings, running timers) stays on the phone.
  *

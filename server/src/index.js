@@ -14,8 +14,8 @@ const server = createApp().listen(config.port, () => {
 // Once a day: drop logins that ended over 90 days ago (the dashboard's activity counts look back
 // 30 days at most) and codes older than a week (the daily code limit looks back 1 day).
 const tidy = () => Promise.all([
-  authDb.query('DELETE FROM sessions WHERE COALESCE(revoked_at, expires_at) < UTC_TIMESTAMP() - INTERVAL 90 DAY'),
-  authDb.query('DELETE FROM otp_codes WHERE created_at < UTC_TIMESTAMP() - INTERVAL 7 DAY'),
+  authDb.query('DELETE FROM sessions WHERE COALESCE(revoked_at, expires_at) < now() - make_interval(days => 90)'),
+  authDb.query('DELETE FROM otp_codes WHERE created_at < now() - make_interval(days => 7)'),
 ]).catch((err) => console.error('Daily cleanup failed:', err.message));
 tidy();
 setInterval(tidy, 24 * 60 * 60 * 1000).unref();

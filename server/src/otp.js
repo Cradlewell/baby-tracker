@@ -64,7 +64,7 @@ Cradlewell`,
 export async function issueOtp({ purpose, userId, clientId = null, phone, email }) {
   const to = email || phone;
   const [recent] = await authDb.query(
-    `SELECT TIMESTAMPDIFF(SECOND, created_at, UTC_TIMESTAMP()) AS age
+    `SELECT floor(extract(epoch FROM now() - created_at))::int AS age
        FROM otp_codes WHERE user_id = ? AND purpose = ? AND phone = ?
       ORDER BY id DESC LIMIT 1`,
     [userId, purpose, to]
@@ -81,8 +81,8 @@ export async function issueOtp({ purpose, userId, clientId = null, phone, email 
   const limit = config.otpDailyLimit;
   if (limit > 0) {
     const [sent] = await authDb.query(
-      `SELECT created_at, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), created_at + INTERVAL 1 DAY) AS frees_in
-         FROM otp_codes WHERE phone = ? AND purpose = ? AND created_at > UTC_TIMESTAMP() - INTERVAL 1 DAY
+      `SELECT created_at, floor(extract(epoch FROM created_at + make_interval(days => 1) - now()))::int AS frees_in
+         FROM otp_codes WHERE phone = ? AND purpose = ? AND created_at > now() - make_interval(days => 1)
         ORDER BY id DESC LIMIT ?`,
       [to, purpose, limit]
     );
@@ -98,13 +98,13 @@ export async function issueOtp({ purpose, userId, clientId = null, phone, email 
   const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
   const otpId = await withTransaction(authDb, async (conn) => {
     await conn.query(
-      `UPDATE otp_codes SET consumed_at = UTC_TIMESTAMP()
+      `UPDATE otp_codes SET consumed_at = now()
         WHERE user_id = ? AND purpose = ? AND consumed_at IS NULL`,
       [userId, purpose]
     );
     const [res] = await conn.query(
       `INSERT INTO otp_codes (purpose, user_id, client_id, phone, code_hash, expires_at)
-       VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP() + INTERVAL ? SECOND)`,
+       VALUES (?, ?, ?, ?, ?, now() + make_interval(secs => ?)) RETURNING id`,
       [purpose, userId, clientId, to, hashCode(purpose, to, code), config.otpTtlSeconds]
     );
     return res.insertId;
@@ -114,7 +114,7 @@ export async function issueOtp({ purpose, userId, clientId = null, phone, email 
     if (email) await sendEmail(email, EMAILS[purpose](code));
     else await sendSms(phone, MESSAGES[purpose](code));
   } catch (err) {
-    await authDb.query('UPDATE otp_codes SET consumed_at = UTC_TIMESTAMP() WHERE id = ?', [otpId]);
+    await authDb.query('UPDATE otp_codes SET consumed_at = now() WHERE id = ?', [otpId]);
     throw err;
   }
   return { expiresInSeconds: config.otpTtlSeconds };
@@ -128,7 +128,7 @@ export async function verifyOtp({ purpose, userId, phone, email, code }) {
   const to = email || phone;
   const outcome = await withTransaction(authDb, async (conn) => {
     const [rows] = await conn.query(
-      `SELECT id, client_id, code_hash, attempts, (expires_at <= UTC_TIMESTAMP()) AS expired
+      `SELECT id, client_id, code_hash, attempts, (expires_at <= now()) AS expired
          FROM otp_codes
         WHERE user_id = ? AND purpose = ? AND phone = ? AND consumed_at IS NULL
         ORDER BY id DESC LIMIT 1
@@ -139,7 +139,7 @@ export async function verifyOtp({ purpose, userId, phone, email, code }) {
     if (!otp) return { error: 'otp_not_found' };
 
     if (otp.expired) {
-      await conn.query('UPDATE otp_codes SET consumed_at = UTC_TIMESTAMP() WHERE id = ?', [otp.id]);
+      await conn.query('UPDATE otp_codes SET consumed_at = now() WHERE id = ?', [otp.id]);
       return { error: 'otp_expired' };
     }
 
@@ -147,7 +147,7 @@ export async function verifyOtp({ purpose, userId, phone, email, code }) {
       const attempts = otp.attempts + 1;
       const locked = attempts >= config.otpMaxAttempts;
       await conn.query(
-        `UPDATE otp_codes SET attempts = ?, consumed_at = ${locked ? 'UTC_TIMESTAMP()' : 'NULL'} WHERE id = ?`,
+        `UPDATE otp_codes SET attempts = ?, consumed_at = ${locked ? 'now()' : 'NULL'} WHERE id = ?`,
         [attempts, otp.id]
       );
       return { error: locked ? 'otp_locked' : 'otp_incorrect', left: config.otpMaxAttempts - attempts };
@@ -155,7 +155,7 @@ export async function verifyOtp({ purpose, userId, phone, email, code }) {
 
     // Conditional update makes the "use once" guarantee hold even under concurrent requests.
     const [res] = await conn.query(
-      'UPDATE otp_codes SET consumed_at = UTC_TIMESTAMP() WHERE id = ? AND consumed_at IS NULL',
+      'UPDATE otp_codes SET consumed_at = now() WHERE id = ? AND consumed_at IS NULL',
       [otp.id]
     );
     if (res.affectedRows !== 1) return { error: 'otp_not_found' };

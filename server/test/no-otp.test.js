@@ -7,6 +7,7 @@ process.env.EMAIL_PROVIDER = 'memory';
 process.env.DISABLE_RATE_LIMIT = 'true';
 process.env.NURSE_APPROVAL = 'false';
 process.env.NODE_ENV = 'test';
+process.env.DB_SCHEMA = 'app_test'; // never the app's own data
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -77,9 +78,9 @@ test('register -> login -> client phone -> records, with no codes', async () => 
   assert.equal((await call('GET', '/data/babies', { token })).body.error.code, 'client_not_verified');
 
   // Any existing client opens immediately: clients are not tied to a nurse.
-  const [other] = await clientsDb.query('INSERT INTO clients (name, phone) VALUES (?, ?)', ['Other Client', phone(4)]);
+  const [other] = await clientsDb.query('INSERT INTO clients (name, phone) VALUES (?, ?) RETURNING id', ['Other Client', phone(4)]);
   clientIds.push(other.insertId);
-  const [mine] = await clientsDb.query('INSERT INTO clients (name, phone) VALUES (?, ?)', ['My Client', phone(3)]);
+  const [mine] = await clientsDb.query('INSERT INTO clients (name, phone) VALUES (?, ?) RETURNING id', ['My Client', phone(3)]);
   clientIds.push(mine.insertId);
   const open = await call('POST', '/client/request-otp', { token, body: { phone: phone(3) } });
   assert.equal(open.status, 200);

@@ -2,7 +2,7 @@
 
 A newborn baby tracker for Android and iOS, built with Expo and React Native. Parents use it to log feeds, sleep, diapers, medicine, growth and vaccinations for one or more babies.
 
-Caregivers sign in with an account, verify a client by a one-time code sent to the client's phone, and then work with that client's records. The records are stored in MySQL behind the API in [`server/`](server/README.md); the app never connects to the database directly. There are no analytics.
+Caregivers sign in with an account, verify a client by a one-time code sent to the client's phone, and then work with that client's records. The records are stored in Supabase (PostgreSQL) behind the API in [`server/`](server/README.md); the app never connects to the database directly. There are no analytics.
 
 ## Requirements
 
@@ -74,7 +74,7 @@ Splash → Login ─┬─ Register → VerifyOtp (own phone) → Login
 
 ## How data is stored
 
-The stores still read and write through an AsyncStorage-style API, but they import it from `src/lib/storage.js`. While a client is verified, that module sends baby profiles and records to the API (MySQL) and keeps a cached copy on the phone, so the app works offline. Changes made offline are uploaded when the app is next active or saves again. Settings and running timers stay on the phone only.
+The stores still read and write through an AsyncStorage-style API, but they import it from `src/lib/storage.js`. While a client is verified, that module sends baby profiles and records to the API (Supabase) and keeps a cached copy on the phone, so the app works offline. Changes made offline are uploaded when the app is next active or saves again. Settings and running timers stay on the phone only.
 
 Storage keys:
 

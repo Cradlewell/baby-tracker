@@ -32,7 +32,7 @@ Care records belong to the client (the family), not to one nurse: any nurse can 
 
 - Tracking: breast and bottle feeds (timers, sides, quantities), sleep (naps and night sleep, timers, wakeups), diapers (urine, stool, both, dry; urine and stool colours with doctor-warning colours), medicine (dose, unit, given or skipped, next-dose reminder with countdown), growth (weight, length, head), vaccinations (India's UIP schedule, completion, reminders), daily summary.
 - Several babies per client; one active baby at a time.
-- Stack: Expo SDK 58, React Native 0.88, React Navigation 7, Zustand. Node/Express API with two MySQL databases (authentication; clients and monitoring records). One shared custom design on Android and iOS that respects each platform's basics; both platforms matter equally.
+- Stack: Expo SDK 58, React Native 0.88, React Navigation 7, Zustand. Node/Express API with a Supabase (PostgreSQL) database. One shared custom design on Android and iOS that respects each platform's basics; both platforms matter equally.
 - Accounts: email and password; OTP codes are built but switched off for now.
 - Undecided: who may create accounts (any sign-up today), real SMS provider, export.
 

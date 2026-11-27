@@ -99,11 +99,11 @@ publicRouter.post('/crash', limiter('crash', 30), async (req, res) => {
   if (!message) return res.status(400).json({ error: { code: 'invalid_body', message: 'message is required.' } });
   await authDb.query(
     'INSERT INTO crash_reports (message, stack, is_fatal, app_version, platform, screen) VALUES (?, ?, ?, ?, ?, ?)',
-    [message, clip(b.stack, 8000), b.fatal ? 1 : 0, clip(b.appVersion, 20), clip(b.platform, 40), clip(b.screen, 60)]
+    [message, clip(b.stack, 8000), !!b.fatal, clip(b.appVersion, 20), clip(b.platform, 40), clip(b.screen, 60)]
   );
   if (Date.now() - lastCleanup > 24 * 3600e3) {
     lastCleanup = Date.now();
-    authDb.query('DELETE FROM crash_reports WHERE created_at < UTC_TIMESTAMP() - INTERVAL 90 DAY').catch(() => {});
+    authDb.query('DELETE FROM crash_reports WHERE created_at < now() - make_interval(days => 90)').catch(() => {});
   }
   res.status(204).end();
 });

@@ -1,4 +1,4 @@
-// End-to-end test of the full flow against the real MySQL databases configured in server/.env:
+// End-to-end test of the full flow against Supabase (DATABASE_URL in server/.env), schema app_test:
 // Registration -> OTP -> Login -> Client phone -> Client OTP -> monitoring data.
 // SMS go to an in-memory outbox; every user and client the test creates is deleted afterwards.
 process.env.OTP_ENABLED = 'true';
@@ -11,6 +11,7 @@ process.env.OTP_RESEND_COOLDOWN_SECONDS = '0';
 process.env.OTP_DAILY_LIMIT = '0';
 process.env.NURSE_APPROVAL = 'false';
 process.env.NODE_ENV = 'test';
+process.env.DB_SCHEMA = 'app_test'; // never the app's own data
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -77,7 +78,7 @@ async function login(email, password = 'Passw0rd!') {
 async function createParent(ph, name = 'Test Parent') {
   const [u] = await authDb.query(
     `INSERT INTO users (full_name, phone, email, password_hash, verification_status, verified_at, role)
-     VALUES (?, ?, ?, 'x', 'verified', UTC_TIMESTAMP(), 'client')`,
+     VALUES (?, ?, ?, 'x', 'verified', now(), 'client') RETURNING id`,
     [name, ph, `parent${ph.slice(-8)}+e2e${uniq}@example.com`]
   );
   createdUserIds.push(u.insertId);
@@ -85,7 +86,7 @@ async function createParent(ph, name = 'Test Parent') {
 }
 async function createClient(name, ph) {
   const parentId = await createParent(ph, name);
-  const [res] = await clientsDb.query('INSERT INTO clients (name, phone, user_id) VALUES (?, ?, ?)', [name, ph, parentId]);
+  const [res] = await clientsDb.query('INSERT INTO clients (name, phone, user_id) VALUES (?, ?, ?) RETURNING id', [name, ph, parentId]);
   createdClientIds.push(res.insertId);
   return res.insertId;
 }
@@ -188,8 +189,8 @@ test('expired OTPs are rejected and a resent code works', async () => {
   });
   const code = lastCodeFor(phoneB);
   await authDb.query(
-    `UPDATE otp_codes o JOIN users u ON u.id = o.user_id
-        SET o.expires_at = UTC_TIMESTAMP() - INTERVAL 1 SECOND WHERE u.email = ?`,
+    `UPDATE otp_codes o SET expires_at = now() - make_interval(secs => 1)
+       FROM users u WHERE u.id = o.user_id AND u.email = ?`,
     [emailB]
   );
   const expired = await call('POST', '/auth/register/verify', { body: { email: emailB, otp: code } });
@@ -207,7 +208,7 @@ test('expired OTPs are rejected and a resent code works', async () => {
 
 test('an OTP expires five minutes after it is issued', async () => {
   const [[row]] = await authDb.query(
-    `SELECT TIMESTAMPDIFF(SECOND, o.created_at, o.expires_at) AS ttl
+    `SELECT extract(epoch FROM o.expires_at - o.created_at)::int AS ttl
        FROM otp_codes o JOIN users u ON u.id = o.user_id WHERE u.email = ? ORDER BY o.id DESC LIMIT 1`,
     [emailB]
   );
@@ -500,7 +501,7 @@ test("Google sign-up with a family's phone number needs that phone's SMS code", 
     // A nurse registered this family before the parent signed up (no owner yet). Proving the
     // phone with the SMS code hands it over.
     const orphanPhone = phone();
-    const [o] = await clientsDb.query('INSERT INTO clients (name, phone) VALUES (?, ?)', ['Nurse Family', orphanPhone]);
+    const [o] = await clientsDb.query('INSERT INTO clients (name, phone) VALUES (?, ?) RETURNING id', ['Nurse Family', orphanPhone]);
     createdClientIds.push(o.insertId);
     const ticket2 = (await call('POST', '/auth/google', { body: { idToken: `good:hal+e2e${uniq}@example.com:Hal`, role: 'client' } })).body.signupToken;
     const r2 = await call('POST', '/auth/google/signup', { body: { signupToken: ticket2, phone: orphanPhone, role: 'client' } });
@@ -517,12 +518,12 @@ test("Google sign-up with a family's phone number needs that phone's SMS code", 
     // way (another Google email, or a password sign-up) is refused.
     const fam3 = phone();
     const famMail = `famowner+e2e${uniq}@example.com`;
-    const [f3] = await clientsDb.query('INSERT INTO clients (name, phone, email, email_trusted) VALUES (?, ?, ?, 1)', ['Family K', fam3, famMail]);
+    const [f3] = await clientsDb.query('INSERT INTO clients (name, phone, email, email_trusted) VALUES (?, ?, ?, true) RETURNING id', ['Family K', fam3, famMail]);
     createdClientIds.push(f3.insertId);
     // An email a nurse typed is not trusted: it could be the nurse's own.
     const fam4 = phone();
     const nurseMail = `nurseset+e2e${uniq}@example.com`;
-    const [f4] = await clientsDb.query('INSERT INTO clients (name, phone, email) VALUES (?, ?, ?)', ['Family L', fam4, nurseMail]);
+    const [f4] = await clientsDb.query('INSERT INTO clients (name, phone, email) VALUES (?, ?, ?) RETURNING id', ['Family L', fam4, nurseMail]);
     createdClientIds.push(f4.insertId);
     config.otpEnabled = false;
     try {
@@ -677,14 +678,14 @@ test('a nurse enters a family code once; the family reopens for 30 days; a new n
   await call('PATCH', `/data/babies/${baby.id}/records/diaper`, { token, body: { upsert: [{ id: 'd1', eventType: 'urine' }], delete: [], order: ['d1'] } });
   const [[nu]] = await authDb.query('SELECT id FROM users WHERE email = ?', [nurse]);
   const age = async (days) => {
-    await clientsDb.query('UPDATE monitoring_records SET updated_at = UTC_TIMESTAMP() - INTERVAL ? DAY WHERE baby_id = ?', [days, baby.id]);
-    await clientsDb.query('UPDATE client_access SET granted_at = UTC_TIMESTAMP() - INTERVAL 60 DAY WHERE user_id = ? AND client_id = ?', [nu.id, famId]);
+    await clientsDb.query('UPDATE monitoring_records SET updated_at = now() - make_interval(days => ?) WHERE baby_id = ?', [days, baby.id]);
+    await clientsDb.query('UPDATE client_access SET granted_at = now() - make_interval(days => 60) WHERE user_id = ? AND client_id = ?', [nu.id, famId]);
   };
   await age(29);
   assert.deepEqual((await call('GET', '/client/mine', { token })).body.clients.map((c) => c.id), [famId], 'tracked 29 days ago: listed');
   await age(31);
   assert.deepEqual((await call('GET', '/client/mine', { token })).body.clients, [], 'tracked 31 days ago: gone');
-  await clientsDb.query('UPDATE client_access SET granted_at = UTC_TIMESTAMP() WHERE user_id = ? AND client_id = ?', [nu.id, famId]);
+  await clientsDb.query('UPDATE client_access SET granted_at = now() WHERE user_id = ? AND client_id = ?', [nu.id, famId]);
   // Reopening the app: the family is still open in this login, no number asked.
   const me = await call('GET', '/auth/me', { token });
   assert.equal(me.body.client?.id, famId, JSON.stringify(me.body));
@@ -698,7 +699,7 @@ test('a nurse enters a family code once; the family reopens for 30 days; a new n
 
   // Revoked while the family is open: the next data request is refused, and a code is needed.
   const [[u]] = await authDb.query('SELECT id FROM users WHERE email = ?', [nurse]);
-  await clientsDb.query('UPDATE client_access SET revoked_at = UTC_TIMESTAMP() WHERE user_id = ? AND client_id = ?', [u.id, famId]);
+  await clientsDb.query('UPDATE client_access SET revoked_at = now() WHERE user_id = ? AND client_id = ?', [u.id, famId]);
   const [[sess]] = await authDb.query('SELECT client_id FROM sessions WHERE user_id = ? AND revoked_at IS NULL ORDER BY id DESC LIMIT 1', [u.id]);
   assert.equal(Number(sess.client_id), famId);
   const meRevoked = await call('GET', '/auth/me', { token });
@@ -713,7 +714,7 @@ test('a nurse enters a family code once; the family reopens for 30 days; a new n
 
   // 30 days after the number was last entered: asked for the number again on opening the app and
   // at login, but no code, since this nurse already verified this family.
-  await clientsDb.query('UPDATE client_access SET opened_at = UTC_TIMESTAMP() - INTERVAL 31 DAY WHERE user_id = ? AND client_id = ?', [u.id, famId]);
+  await clientsDb.query('UPDATE client_access SET opened_at = now() - make_interval(days => 31) WHERE user_id = ? AND client_id = ?', [u.id, famId]);
   assert.equal((await call('GET', '/auth/me', { token })).body.client, null, 'number asked after 30 days');
   const after30 = await call('POST', '/auth/login', { body: { email: nurse, password: 'Passw0rd!' } });
   assert.equal(after30.body.client, null);
@@ -723,7 +724,7 @@ test('a nurse enters a family code once; the family reopens for 30 days; a new n
   assert.equal(relog2.body.client?.id, famId, 'entering the number starts another 30 days');
 
   // An expiry, when one is configured: a code.
-  await clientsDb.query('UPDATE client_access SET expires_at = UTC_TIMESTAMP() - INTERVAL 1 MINUTE WHERE user_id = ? AND client_id = ?', [u.id, famId]);
+  await clientsDb.query('UPDATE client_access SET expires_at = now() - make_interval(mins => 1) WHERE user_id = ? AND client_id = ?', [u.id, famId]);
   assert.equal((await open(token)).body.otpRequired, true);
 });
 
@@ -757,7 +758,9 @@ test('Play Store: public privacy and delete-account pages, crash reports, delete
   const clientId = pl.body.client.id;
   const baby = { id: `bdel${uniq}`, name: 'Del Baby', dob: '2026-01-01' };
   assert.equal((await call('PATCH', '/data/babies', { token: ptoken, body: { upsert: [baby], delete: [], order: [baby.id] } })).status, 200);
-  await clientsDb.query("INSERT INTO client_access (user_id, client_id, expires_at) VALUES (999999999, ?, NULL)", [clientId]);
+  // Some nurse's access to this family (any account will do).
+  const someNurse = await createParent(phone(), 'Some Nurse');
+  await clientsDb.query('INSERT INTO client_access (user_id, client_id, expires_at) VALUES (?, ?, NULL)', [someNurse, clientId]);
 
   const noConfirm = await call('POST', '/auth/account/delete', { token: ptoken, body: { password: 'Passw0rd!' } });
   assert.equal(noConfirm.body.error.code, 'confirm_required');
@@ -801,7 +804,7 @@ test('at most 4 codes a day go to the same email', async () => {
     assert.match(fifth.body.error.message, /Only 4 codes .* email address in a day\. Please try again in 24 hours/);
     // A day later the oldest code no longer counts.
     const [[u]] = await authDb.query('SELECT id FROM users WHERE email = ?', [email]);
-    await authDb.query('UPDATE otp_codes SET created_at = created_at - INTERVAL 25 HOUR WHERE user_id = ? AND phone = ? ORDER BY id LIMIT 1', [u.id, email]);
+    await authDb.query('UPDATE otp_codes SET created_at = created_at - make_interval(hours => 25) WHERE id = (SELECT min(id) FROM otp_codes WHERE user_id = ? AND phone = ?)', [u.id, email]);
     assert.equal((await call('POST', '/auth/password/forgot', { body: { email } })).status, 200);
   } finally {
     config.otpDailyLimit = 0;
@@ -984,7 +987,7 @@ test('nurse approval: a new nurse waits, the admin approves or rejects, and the 
     let list = (await call('GET', '/admin/api/overview', { token })).body;
     const shown = list.pendingNurses.find((n) => n.id === idC);
     assert.ok(shown && new Date(shown.expires) > Date.now(), 'still waiting, with an expiry date');
-    await authDb.query('UPDATE users SET created_at = UTC_TIMESTAMP() - INTERVAL 11 DAY WHERE id = ?', [idC]);
+    await authDb.query('UPDATE users SET created_at = now() - make_interval(days => 11) WHERE id = ?', [idC]);
     memoryMailbox.length = 0;
     list = (await call('GET', '/admin/api/overview', { token })).body;
     assert.ok(!list.pendingNurses.some((n) => n.id === idC), 'expired request removed');
@@ -1005,7 +1008,7 @@ test('security fixes: nurse email, re-registration, per-kind code limit, big syn
     await registerAndVerify({ email: nurse, phone: phone() });
     const token = await login(nurse);
     const famPhone = phone();
-    const [f] = await clientsDb.query('INSERT INTO clients (name, phone) VALUES (?, ?)', ['No Email Fam', famPhone]);
+    const [f] = await clientsDb.query('INSERT INTO clients (name, phone) VALUES (?, ?) RETURNING id', ['No Email Fam', famPhone]);
     createdClientIds.push(f.insertId);
     await clientsDb.query("INSERT INTO babies (id, client_id, name, details) VALUES (?, ?, 'Bo', '{}')", [`nb${uniq}`, f.insertId]);
     const r = await call('POST', '/client/request-otp', { token, body: { phone: famPhone, email: nurse } });
