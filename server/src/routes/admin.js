@@ -13,15 +13,15 @@ import { requireName, requirePhone, requireEmail, maskPhone } from '../validatio
 import { limiter } from '../rateLimit.js';
 
 // The admin dashboard: a web page (/admin) and the read-only numbers it shows (/admin/api).
-// Only accounts listed in ADMIN_EMAILS can log in; they use their normal email and password.
+// Only accounts with the 'admin' role can log in (npm run admin -- create-admin).
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const adminPages = express.static(path.join(here, '..', '..', 'public', 'admin'), { index: 'index.html' });
 
 export const adminRouter = Router();
-// An admin is an account with the 'admin' role (npm run admin -- create-admin), or one whose
-// email is listed in ADMIN_EMAILS.
-const isAdmin = (email, role) => role === 'admin' || config.adminEmails.includes(String(email || '').toLowerCase());
+// Only the CLI makes admins: an email address alone proves nothing, since sign-up never checks
+// that the person owns the mailbox.
+const isAdmin = (role) => role === 'admin';
 
 const DAY = 86400000;
 const WEEKS = 12;
@@ -35,13 +35,13 @@ adminRouter.post('/login', limiter('admin-login', 10), async (req, res) => {
   const user = rows[0];
   const ok = user && await bcrypt.compare(password, user.password_hash);
   // One answer for every failure, so the page never tells who is an admin.
-  if (!ok || !isAdmin(user.email, user.role)) throw unauthorized('invalid_credentials', 'Incorrect email or password, or this account is not an admin.');
+  if (!ok || !isAdmin(user.role)) throw unauthorized('invalid_credentials', 'Incorrect email or password, or this account is not an admin.');
   const token = await createSession(user.id);
   res.json({ token, name: user.full_name });
 });
 
 function requireAdmin(req, _res, next) {
-  if (!isAdmin(req.auth?.user?.email, req.auth?.role)) return next(forbidden('not_admin', 'This account is not an admin.'));
+  if (!isAdmin(req.auth?.role)) return next(forbidden('not_admin', 'This account is not an admin.'));
   next();
 }
 adminRouter.use(requireAuth, requireAdmin);
@@ -292,7 +292,7 @@ adminRouter.post('/clients', async (req, res) => {
   const phone = requirePhone(req.body?.phone);
   const email = req.body?.email ? requireEmail(req.body.email) : null;
   try {
-    const [r] = await clientsDb.query('INSERT INTO clients (name, phone, email) VALUES (?, ?, ?)', [name, phone, email]);
+    const [r] = await clientsDb.query('INSERT INTO clients (name, phone, email, email_trusted) VALUES (?, ?, ?, ?)', [name, phone, email, email ? 1 : 0]);
     res.status(201).json({ id: r.insertId, code: clientCode(r.insertId), name, phoneMasked: maskPhone(phone) });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') throw conflict('client_exists', 'A family with this phone number is already registered.');

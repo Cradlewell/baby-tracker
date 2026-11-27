@@ -37,6 +37,13 @@ function useNow(active = true) {
 }
 
 const QTY_STEP = { ml: 10, oz: 0.5 };
+// More than a baby bottle holds: almost always a typo (e.g. 90 typed with "oz" selected).
+const QTY_MAX = { ml: 500, oz: 17 };
+const tooMuch = (qty, unit) => {
+  if (qty <= QTY_MAX[unit || 'ml']) return false;
+  Alert.alert('Check the amount', `${qty} ${unit || 'ml'} is more than a bottle holds. Check the number and the unit (ml or oz).`);
+  return true;
+};
 const fmtQty = (n) => String(Math.round(n * 10) / 10);
 
 // ─── Shared bits ──────────────────────────────────────────────────────────────
@@ -744,7 +751,7 @@ export default function FeedingScreen({ navigation }) {
 
   const handleBottleStartTimer = () => {
     const prepared = parsePositiveNumber(preparedQty);
-    if (!prepared) return;
+    if (!prepared || tooMuch(prepared, unit)) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setBottlePreparing(false);
     setConsumedQty('');
@@ -759,9 +766,11 @@ export default function FeedingScreen({ navigation }) {
 
   const handleBottleSave = async () => {
     if (saving) return;
+    const consumed = parsePositiveNumber(consumedQty) || 0;
+    if (tooMuch(consumed, mySession?.unit)) return;
     setSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await useFeedingStore.getState().endSession(babyId, { consumedQty: parsePositiveNumber(consumedQty) || 0 });
+    await useFeedingStore.getState().endSession(babyId, { consumedQty: consumed });
     cancelReminder(feedLimitKey(babyId));
     setConsumedQty('');
     setSaving(false);

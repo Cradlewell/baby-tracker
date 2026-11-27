@@ -37,6 +37,7 @@ const MIGRATIONS = {
   '02_clients.sql': [
     { table: 'clients', column: 'user_id', ddl: 'ADD COLUMN user_id BIGINT UNSIGNED NULL AFTER phone, ADD KEY idx_clients_user (user_id)' },
     { table: 'clients', column: 'email', ddl: 'ADD COLUMN email VARCHAR(255) NULL AFTER user_id' },
+    { table: 'clients', column: 'email_trusted', ddl: 'ADD COLUMN email_trusted TINYINT(1) NOT NULL DEFAULT 0 AFTER email' },
     { table: 'client_access', column: 'opened_at', ddl: 'ADD COLUMN opened_at DATETIME NULL AFTER revoked_at' },
   ],
 };
@@ -65,6 +66,21 @@ async function addColumnIfMissing(database, { table, column, ddl }) {
   }
 }
 
+// Older databases deleted a user's codes with the user, which reset the daily code limit.
+async function keepCodesOfDeletedUsers(database) {
+  const [idx] = await admin.query("SHOW INDEX FROM otp_codes WHERE Key_name = 'idx_otp_dest'");
+  if (!idx.length) await admin.query('ALTER TABLE otp_codes ADD KEY idx_otp_dest (phone, purpose, created_at)');
+  const [[fk]] = await admin.query(
+    "SELECT DELETE_RULE AS rule FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = ? AND CONSTRAINT_NAME = 'fk_otp_user'",
+    [database]
+  );
+  if (fk?.rule === 'SET NULL') return;
+  await admin.query('ALTER TABLE otp_codes DROP FOREIGN KEY fk_otp_user');
+  await admin.query("ALTER TABLE otp_codes MODIFY COLUMN user_id BIGINT UNSIGNED NULL COMMENT 'user who requested the code; NULL once that account is deleted (kept for the daily limit)'");
+  await admin.query('ALTER TABLE otp_codes ADD CONSTRAINT fk_otp_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL');
+  console.log('  otp_codes are now kept when a user is deleted');
+}
+
 const databases = [
   { name: env('AUTH_DB_NAME', 'cradlewell_auth'), user: env('AUTH_DB_USER'), password: env('AUTH_DB_PASSWORD'), schema: '01_auth.sql' },
   { name: env('CLIENTS_DB_NAME', 'cradlewell_clients'), user: env('CLIENTS_DB_USER'), password: env('CLIENTS_DB_PASSWORD'), schema: '02_clients.sql' },
@@ -85,6 +101,7 @@ for (const db of databases) {
   await admin.query(sql);
   for (const m of MIGRATIONS[db.schema] || []) await addColumnIfMissing(db.name, m);
   for (const ddl of ALWAYS[db.schema] || []) await admin.query(ddl);
+  if (db.schema === '01_auth.sql') await keepCodesOfDeletedUsers(db.name);
   console.log(`✓ ${db.name}: tables ready, user ${db.user}@${appHost} has data access`);
 }
 

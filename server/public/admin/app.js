@@ -360,19 +360,22 @@
     if (!recordsCache.has(k)) recordsCache.set(k, call(`/families/${familyId}/babies/${encodeURIComponent(babyId)}/records`).catch((e) => { recordsCache.delete(k); throw e; }));
     return recordsCache.get(k);
   }
-  // The months (newest first) in which a baby has entries, by each entry's own time.
-  function monthsOf(records) {
-    const keys = new Set();
-    const add = (v) => { const t = v ? new Date(v) : null; if (t && !Number.isNaN(t.getTime())) keys.add(monthKey(t)); };
-    (records.feeding || []).forEach((x) => add(x.startTime || x.createdAt));
-    (records.sleep || []).forEach((x) => add(x.startTime));
-    (records.diaper || []).forEach((x) => add(x.eventTime || x.createdAt));
-    (records.medicine || []).forEach((x) => add(x.time || x.createdAt));
-    ['temperature', 'breathing', 'skin', 'milestone'].forEach((k) => (records[k] || []).forEach((x) => add(x.time)));
-    (records.growth || []).forEach((x) => add(x.date || x.createdAt));
-    (records.vaccination || []).filter((v) => v.completed).forEach((x) => add(x.completedDate));
-    return [...keys].sort().reverse();
+  // When an entry happened, by its own time (each kind of record keeps it in its own field).
+  const TIME = {
+    feeding: (x) => x.startTime || x.createdAt, sleep: (x) => x.startTime, diaper: (x) => x.eventTime || x.createdAt,
+    medicine: (x) => x.time || x.createdAt, growth: (x) => x.date || x.createdAt, vaccination: (x) => (x.completed ? x.completedDate : null),
+    temperature: (x) => x.time, breathing: (x) => x.time, skin: (x) => x.time, milestone: (x) => x.time,
+  };
+  const timeOf = (kind, x) => { const v = TIME[kind]?.(x); const t = v ? new Date(v) : null; return t && !Number.isNaN(t.getTime()) ? t : null; };
+  // Reports start the day the family registered: entries dated earlier (e.g. the birth weight) are left out.
+  const registeredDay = () => { const d = new Date(rep.family?.created || 0); d.setHours(0, 0, 0, 0); return d; };
+  function sinceRegistered(records) {
+    const from = registeredDay();
+    return Object.fromEntries(Object.entries(records || {}).map(([k, list]) => [k,
+      Array.isArray(list) && TIME[k] ? list.filter((x) => { const t = timeOf(k, x); return !t || t >= from; }) : list]));
   }
+  // True when the baby has at least one dated entry from the registration day on.
+  const hasEntries = (records) => Object.entries(sinceRegistered(records)).some(([k, list]) => Array.isArray(list) && list.some((x) => timeOf(k, x)));
   const chosenBabies = () => {
     const v = document.querySelector('input[name="dlBaby"]:checked')?.value;
     return !rep.family ? [] : v === 'all' ? rep.family.babyList : rep.family.babyList.filter((b) => b.id === v);
@@ -387,10 +390,15 @@
     sel.disabled = true; $('dlGo').disabled = true;
     try {
       const all = await Promise.all(babies.map((b) => babyRecords(rep.family.id, b.id)));
-      const months = [...new Set(all.flatMap((r) => monthsOf(r.records)))].sort().reverse();
+      // Every month from the family's registration to this month, newest first.
+      const months = [];
+      if (all.some((r) => hasEntries(r.records))) {
+        const first = monthKey(registeredDay());
+        for (let d = new Date(); monthKey(d) >= first; d = new Date(d.getFullYear(), d.getMonth() - 1, 1)) months.push(monthKey(d));
+      }
       if (!months.length) {
         sel.innerHTML = '<option>No records yet</option>';
-        $('dlErr').textContent = 'Nothing has been recorded for this baby yet, so there is no report.';
+        $('dlErr').textContent = 'Nothing has been recorded for this baby since the family registered, so there is no report yet.';
         $('dlName').textContent = '';
         return;
       }
@@ -477,7 +485,7 @@
       const month = new Date(y, mo - 1, 15);
       const results = await Promise.all(babies.map(async (b) => {
         const { baby, records } = await babyRecords(rep.family.id, b.id);
-        return window.CradlewellReport.buildMonthReport({ baby, records, month });
+        return window.CradlewellReport.buildMonthReport({ baby, records: sinceRegistered(records), month });
       }));
       const ok = results.filter((r) => r.html);
       if (!ok.length) throw new Error(results[0]?.empty || 'Nothing was recorded that month.');

@@ -44,9 +44,9 @@ export function requireNewPassword(password, confirmPassword) {
   if (typeof password !== 'string' || password.length < 8) {
     throw badRequest('weak_password', 'Password must be at least 8 characters.');
   }
-  if (password.length > 72) {
-    // bcrypt only uses the first 72 bytes.
-    throw badRequest('weak_password', 'Password must be at most 72 characters.');
+  if (Buffer.byteLength(password, 'utf8') > 72) {
+    // bcrypt only uses the first 72 bytes: longer ones (Hindi letters are 3 bytes each) would be cut silently.
+    throw badRequest('weak_password', 'Password is too long. Use at most 72 characters (Hindi, Telugu and other non-English letters count as 3).');
   }
   if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
     throw badRequest('weak_password', 'Password must contain at least one letter and one number.');

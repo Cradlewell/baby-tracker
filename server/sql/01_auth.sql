@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS otp_codes (
   id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   purpose     ENUM('registration', 'client_access', 'password_reset') NOT NULL,
-  user_id     BIGINT UNSIGNED NOT NULL COMMENT 'user who requested the code',
+  user_id     BIGINT UNSIGNED NULL     COMMENT 'user who requested the code; NULL once that account is deleted (kept for the daily limit)',
   client_id   BIGINT UNSIGNED NULL     COMMENT 'cradlewell_clients.clients.id for client_access codes',
   phone       VARCHAR(255)    NOT NULL COMMENT 'phone number or email address the code was sent to',
   code_hash   CHAR(64)        NOT NULL COMMENT 'HMAC-SHA256(OTP_SECRET, code)',
@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS otp_codes (
   updated_at  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_otp_lookup (user_id, purpose, phone, consumed_at),
-  CONSTRAINT fk_otp_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+  KEY idx_otp_dest (phone, purpose, created_at),
+  CONSTRAINT fk_otp_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS sessions (

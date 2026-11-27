@@ -6,12 +6,13 @@ function required(name) {
   return value;
 }
 
-// TRUST_PROXY=1 means "one proxy in front" (a number for Express); "true"/"false" and
-// names like "loopback" are passed through as Express expects them.
+// TRUST_PROXY=1 means "one proxy in front" (a number for Express); names like "loopback" are
+// passed through as Express expects them.
 function parseTrustProxy(v) {
   const s = (v || '').trim();
   if (!s || s === 'false' || s === '0') return false;
-  if (s === 'true') return true;
+  // "true" believes any X-Forwarded-For a client sends, so every per-IP limit could be dodged.
+  if (s === 'true') throw new Error('TRUST_PROXY=true is not allowed: set the number of proxies in front of the server, e.g. TRUST_PROXY=1');
   return /^\d+$/.test(s) ? Number(s) : s;
 }
 
@@ -23,6 +24,10 @@ const clientCodeChannel = (process.env.CLIENT_CODE_CHANNEL
   || (process.env.OTP_ENABLED === 'true' ? 'sms' : 'off')).trim().toLowerCase();
 if (!['off', 'sms', 'email'].includes(clientCodeChannel)) {
   throw new Error('CLIENT_CODE_CHANNEL must be "email", "sms" or "off"');
+}
+if (env === 'production' && clientCodeChannel === 'off') {
+  // "off" opens any family to any nurse without the parent's code: for local testing only.
+  throw new Error('CLIENT_CODE_CHANNEL must be "email" or "sms" when NODE_ENV=production');
 }
 
 const otpSecret = required('OTP_SECRET');
@@ -66,8 +71,6 @@ export const config = {
   // phone number is found (no codes are sent).
   otpEnabled: process.env.OTP_ENABLED === 'true',
   clientCodeChannel,
-  // Accounts that may open the admin dashboard (/admin), by email, comma separated.
-  adminEmails: (process.env.ADMIN_EMAILS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
   // A nurse who entered a family's code once never needs it again for that family (unless it is
   // revoked). Set to a number of days to make that access expire. 0 = never.
   clientAccessDays: Number(process.env.CLIENT_ACCESS_DAYS || 0),
@@ -77,7 +80,7 @@ export const config = {
   otpTtlSeconds: 5 * 60,
   otpMaxAttempts: 5,
   otpResendCooldownSeconds: Number(process.env.OTP_RESEND_COOLDOWN_SECONDS ?? 30),
-  // Codes sent to one email or phone in 24 hours (all kinds together). 0 = no limit.
+  // Codes of one kind sent to one email or phone in 24 hours. 0 = no limit.
   otpDailyLimit: Number(process.env.OTP_DAILY_LIMIT ?? 4),
   // Nurses who sign up in the app can log in only after the admin approves them.
   nurseApproval: process.env.NURSE_APPROVAL !== 'false',

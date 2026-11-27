@@ -2,6 +2,7 @@
 //
 //   npm run admin -- create-client "<client name>" <client phone>
 //   npm run admin -- list-clients
+//   npm run admin -- set-family-email <client phone> <parent email>   (after checking with the parent)
 //   npm run admin -- list-users
 //   npm run admin -- set-role <email> <nurse|client>
 //   npm run admin -- list-access [<client phone>]
@@ -46,6 +47,16 @@ try {
            FROM clients c ORDER BY c.id`
       );
       console.table(rows);
+      break;
+    }
+    case 'set-family-email': {
+      // The admin confirmed with the parent: Google sign-in with this email may now claim the family.
+      const phone = normalizePhone(args[0] || '');
+      const email = (args[1] || '').trim().toLowerCase();
+      if (!phone || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Usage: set-family-email <client phone> <parent email>');
+      const [res] = await clientsDb.query('UPDATE clients SET email = ?, email_trusted = 1 WHERE phone = ?', [email, phone]);
+      if (!res.affectedRows) throw new Error(`No client with phone ${phone}`);
+      console.log(`Family ${phone}: email set to ${email}. The parent can now tap "Continue with Google" with it.`);
       break;
     }
     case 'set-role': {
@@ -141,7 +152,7 @@ try {
       break;
     }
     default:
-      console.log('Commands: create-client "<name>" <phone> | list-clients | list-users | set-role <email> <nurse|client> | list-access [<phone>] | revoke-access <nurse email|all> <phone> | list-crashes [<n>] | create-admin <email> ["<name>"] | reset-admin-password <email>');
+      console.log('Commands: create-client "<name>" <phone> | list-clients | set-family-email <phone> <email> | list-users | set-role <email> <nurse|client> | list-access [<phone>] | revoke-access <nurse email|all> <phone> | list-crashes [<n>] | create-admin <email> ["<name>"] | reset-admin-password <email>');
   }
 } catch (err) {
   console.error(`Error: ${err.code === 'ER_DUP_ENTRY' ? 'A client with that phone number already exists.' : err.message}`);

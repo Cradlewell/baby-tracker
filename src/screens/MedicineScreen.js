@@ -54,9 +54,14 @@ export default function MedicineScreen({ navigation }) {
 
   const handleSave = async () => {
     if (!name.trim() || saving) return;
+    const cleanDose = dose.replace(',', '.').trim();
+    // A dose is optional, but when given it must be a plain positive number (no "-2" or "1..5").
+    if (cleanDose && !(/^\d+(\.\d+)?$/.test(cleanDose) && Number(cleanDose) > 0)) {
+      Alert.alert('Check the dose', 'Enter the dose as a number, for example 2.5.');
+      return;
+    }
     setSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const cleanDose = dose.replace(',', '.').trim();
     const nextDoseAt = intervalHours ? new Date(Date.now() + intervalHours * 3600000) : null;
     await addLog(babyId, {
       name, dose: cleanDose, unit, status, notes,

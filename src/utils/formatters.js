@@ -1,4 +1,4 @@
-import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 
 export function formatDuration(seconds) {
   const h = Math.floor(seconds / 3600);
@@ -20,14 +20,6 @@ export function formatDurationMins(totalSeconds) {
 export function formatTime(date) {
   if (!date) return '--:--';
   return format(new Date(date), 'hh:mm a');
-}
-
-export function formatDate(date) {
-  if (!date) return '';
-  const d = new Date(date);
-  if (isToday(d)) return 'Today';
-  if (isYesterday(d)) return 'Yesterday';
-  return format(d, 'MMM d');
 }
 
 export function formatRelative(date) {
@@ -145,15 +137,6 @@ export function calcAge(dob) {
   const years = Math.floor(months / 12);
   const remMonths = months % 12;
   return remMonths > 0 ? `${years}y ${remMonths}mo old` : `${years} year${years === 1 ? '' : 's'} old`;
-}
-
-export function getGreeting() {
-  const hour = new Date().getHours();
-  if (hour < 6) return 'Shh, night watch 🌙';
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  if (hour < 21) return 'Good evening';
-  return 'Night shift';
 }
 
 export function uid() {

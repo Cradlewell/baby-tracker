@@ -5,8 +5,6 @@ import { Dimensions } from 'react-native';
 export const MAX_CONTENT_WIDTH = 600;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 export const CONTENT_WIDTH = Math.min(SCREEN_WIDTH, MAX_CONTENT_WIDTH);
-export const IS_SMALL_SCREEN = CONTENT_WIDTH < 360;
-export const IS_WIDE_SCREEN = SCREEN_WIDTH > MAX_CONTENT_WIDTH;
 
 // Usual phones (360-414 px wide) keep the designed sizes. Smaller phones shrink a little,
 // larger phones and tablets grow a little, so layouts keep their proportions.
@@ -83,8 +81,3 @@ export const SHADOW = {
     elevation: 10,
   },
 };
-
-export const HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 };
-
-export const BOTTOM_NAV_HEIGHT = 80;
-export const HEADER_HEIGHT = 60;

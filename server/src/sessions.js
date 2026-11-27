@@ -73,7 +73,10 @@ export function requireNurse(req, _res, next) {
 // A client (parent) account's own entry in the clients table, matched by the account's phone
 // number. A client a nurse already created with that number is linked to the account, so the
 // parent sees the records the nurse logged; otherwise a new client is created.
-export const FAMILY_NEEDS_CHECK = 'A nurse has already registered a family with your phone number. To open it, tap "Continue with Google" with the email the nurse registered for your family, or write to care@cradlewell.com.';
+export const FAMILY_NEEDS_CHECK = 'A nurse has already registered a family with your phone number. To open it, tap "Continue with Google" with the email Cradlewell has for your family, or write to care@cradlewell.com.';
+// Only an email the admin entered for a family is trusted to hand it over: one a nurse typed could
+// be the nurse's own.
+const TRUSTED_EMAIL = 'IF(email_trusted, email, NULL) AS email';
 
 // The parent proved this phone number with an SMS code: a family a nurse registered on it
 // (and no parent owns yet) becomes theirs.
@@ -83,18 +86,18 @@ export async function linkFamilyByProvenPhone(userId, phone) {
 
 // A family a nurse registered on this number that no parent owns yet (null if none).
 export async function unclaimedFamily(phone) {
-  const [rows] = await clientsDb.query('SELECT id, email FROM clients WHERE phone = ? AND user_id IS NULL', [phone]);
+  const [rows] = await clientsDb.query(`SELECT id, ${TRUSTED_EMAIL} FROM clients WHERE phone = ? AND user_id IS NULL`, [phone]);
   return rows[0] || null;
 }
 
 export async function openOwnClient(user) {
-  const [rows] = await clientsDb.query('SELECT id, name, phone, user_id, email FROM clients WHERE phone = ?', [user.phone]);
+  const [rows] = await clientsDb.query(`SELECT id, name, phone, user_id, ${TRUSTED_EMAIL} FROM clients WHERE phone = ?`, [user.phone]);
   if (rows[0]) {
     const c = rows[0];
     if (Number(c.user_id) === Number(user.id)) return c;
     // A nurse registered this family before the parent signed up. Typing the phone number proves
     // nothing (sign-up codes may be off), so the family is handed over only to someone who
-    // proves it is theirs: Google has confirmed they own the email the family's code went to.
+    // proves it is theirs: Google has confirmed they own the email the admin entered for it.
     // (A phone proven by SMS is linked in linkFamilyByProvenPhone instead.)
     const sameEmail = c.email && String(c.email).toLowerCase() === String(user.email).toLowerCase();
     if (c.user_id == null && user.google_sub && sameEmail) {
@@ -110,10 +113,9 @@ export async function openOwnClient(user) {
     );
     return { id: res.insertId, name: user.full_name, phone: user.phone };
   } catch (err) {
-    // Created by a nurse at the same moment: use that one.
+    // Created by a nurse at the same moment: check that one like any other existing family.
     if (err.code !== 'ER_DUP_ENTRY') throw err;
-    const [again] = await clientsDb.query('SELECT id, name, phone FROM clients WHERE phone = ?', [user.phone]);
-    return again[0];
+    return openOwnClient(user);
   }
 }
 

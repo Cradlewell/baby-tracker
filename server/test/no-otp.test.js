@@ -223,3 +223,12 @@ test('an account left unverified while codes were on is activated at login', asy
   const [[u]] = await authDb.query('SELECT verification_status FROM users WHERE email = ?', [otherEmail]);
   assert.equal(u.verification_status, 'verified');
 });
+
+test('a password longer than bcrypt reads (72 bytes) is refused, not silently cut', async () => {
+  const long = `a1${'न'.repeat(24)}`; // 26 letters, but 74 bytes
+  const r = await call('POST', '/auth/register', {
+    body: { fullName: 'Long Pass', phone: phone(2), email: `long+nootp${uniq}@example.com`, password: long, confirmPassword: long },
+  });
+  assert.equal(r.status, 400);
+  assert.equal(r.body.error.code, 'weak_password');
+});

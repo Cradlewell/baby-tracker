@@ -23,8 +23,6 @@ export function setRemoteClient(id) {
   clientId = id == null ? null : String(id);
 }
 
-export const isRemoteActive = () => clientId !== null;
-
 function route(key) {
   if (!clientId || LOCAL_ONLY.has(key)) return null;
   if (key === BABIES_KEY) return { path: '/data/babies', isBabies: true };

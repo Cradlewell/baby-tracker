@@ -156,10 +156,6 @@ async function schedule(reminderKey, future) {
   return ids.length;
 }
 
-export async function hasReminder(reminderKey) {
-  return ((await readIds())[reminderKey] || []).length > 0;
-}
-
 /**
  * After a Settings switch changes: 'medicine' or 'vaccine' reminders stop ringing (off) or
  * their saved upcoming reminders are scheduled again (on). Returns how many are now set.

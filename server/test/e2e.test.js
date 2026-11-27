@@ -513,14 +513,24 @@ test("Google sign-up with a family's phone number needs that phone's SMS code", 
     const [linked] = await clientsDb.query('SELECT user_id FROM clients WHERE id = ?', [o.insertId]);
     assert.equal(Number(linked[0].user_id), hal[0].id);
 
-    // With codes off: Google with the email the family's code went to opens it; any other way
-    // (another Google email, or a password sign-up) is refused.
+    // With codes off: Google with the email the admin entered for the family opens it; any other
+    // way (another Google email, or a password sign-up) is refused.
     const fam3 = phone();
     const famMail = `famowner+e2e${uniq}@example.com`;
-    const [f3] = await clientsDb.query('INSERT INTO clients (name, phone, email) VALUES (?, ?, ?)', ['Family K', fam3, famMail]);
+    const [f3] = await clientsDb.query('INSERT INTO clients (name, phone, email, email_trusted) VALUES (?, ?, ?, 1)', ['Family K', fam3, famMail]);
     createdClientIds.push(f3.insertId);
+    // An email a nurse typed is not trusted: it could be the nurse's own.
+    const fam4 = phone();
+    const nurseMail = `nurseset+e2e${uniq}@example.com`;
+    const [f4] = await clientsDb.query('INSERT INTO clients (name, phone, email) VALUES (?, ?, ?)', ['Family L', fam4, nurseMail]);
+    createdClientIds.push(f4.insertId);
     config.otpEnabled = false;
     try {
+      const sneaky = (await call('POST', '/auth/google', { body: { idToken: `good:${nurseMail}:Sneaky`, role: 'client' } })).body.signupToken;
+      const refused = await call('POST', '/auth/google/signup', { body: { signupToken: sneaky, phone: fam4, role: 'client' } });
+      assert.equal(refused.body.error?.code, 'phone_needs_verification', JSON.stringify(refused.body));
+      const [stillFree] = await clientsDb.query('SELECT user_id FROM clients WHERE id = ?', [f4.insertId]);
+      assert.equal(stillFree[0].user_id, null);
       const other = (await call('POST', '/auth/google', { body: { idToken: `good:kim+e2e${uniq}@example.com:Kim`, role: 'client' } })).body.signupToken;
       const no = await call('POST', '/auth/google/signup', { body: { signupToken: other, phone: fam3, role: 'client' } });
       assert.equal(no.body.error.code, 'phone_needs_verification', JSON.stringify(no.body));
@@ -798,7 +808,7 @@ test('at most 4 codes a day go to the same email', async () => {
   }
 });
 
-test('admin dashboard: only admin emails log in; nurses, families, parents and weekly visits', async () => {
+test('admin dashboard: only admin-role accounts log in; nurses, families, parents and weekly visits', async () => {
   const page = await fetch(`${base}/admin/`);
   assert.equal(page.status, 200);
   assert.match(await page.text(), /Cradlewell Admin Portal/);
@@ -806,10 +816,10 @@ test('admin dashboard: only admin emails log in; nurses, families, parents and w
   const adminEmail = `boss+e2e${uniq}@example.com`;
   await registerAndVerify({ email: adminEmail, phone: phone() });
   const notYet = await call('POST', '/admin/api/login', { body: { email: adminEmail, password: 'Passw0rd!' } });
-  assert.equal(notYet.status, 401, 'not in ADMIN_EMAILS');
+  assert.equal(notYet.status, 401, 'a normal account is not an admin');
   assert.equal((await call('GET', '/admin/api/overview')).status, 401);
 
-  config.adminEmails = [adminEmail];
+  await authDb.query("UPDATE users SET role = 'admin' WHERE email = ?", [adminEmail]);
   try {
     const bad = await call('POST', '/admin/api/login', { body: { email: adminEmail, password: 'wrong123' } });
     assert.equal(bad.status, 401);
@@ -885,7 +895,6 @@ test('admin dashboard: only admin emails log in; nurses, families, parents and w
     const p = await call('GET', '/admin/api/parents', { token });
     assert.ok(Array.isArray(p.body.parents));
   } finally {
-    config.adminEmails = [];
   }
 });
 
@@ -912,7 +921,7 @@ test('a double-tapped sign-up makes one account and never a server error', async
 test('nurse approval: a new nurse waits, the admin approves or rejects, and the nurse is emailed', async () => {
   const adminEmail = `boss2+e2e${uniq}@example.com`;
   await registerAndVerify({ email: adminEmail, phone: phone() });
-  config.adminEmails = [adminEmail];
+  await authDb.query("UPDATE users SET role = 'admin' WHERE email = ?", [adminEmail]);
   config.nurseApproval = true;
   try {
     const nurseA = `waitnurse+e2e${uniq}@example.com`;
@@ -985,6 +994,66 @@ test('nurse approval: a new nurse waits, the admin approves or rejects, and the 
     await call('POST', '/admin/api/logout', { token });
   } finally {
     config.nurseApproval = false;
-    config.adminEmails = [];
   }
+});
+
+test('security fixes: nurse email, re-registration, per-kind code limit, big sync', async () => {
+  // A family with baby records and no email on file: a nurse cannot send its code to an email they type.
+  config.clientCodeChannel = 'email';
+  try {
+    const nurse = `emailnurse+e2e${uniq}@example.com`;
+    await registerAndVerify({ email: nurse, phone: phone() });
+    const token = await login(nurse);
+    const famPhone = phone();
+    const [f] = await clientsDb.query('INSERT INTO clients (name, phone) VALUES (?, ?)', ['No Email Fam', famPhone]);
+    createdClientIds.push(f.insertId);
+    await clientsDb.query("INSERT INTO babies (id, client_id, name, details) VALUES (?, ?, 'Bo', '{}')", [`nb${uniq}`, f.insertId]);
+    const r = await call('POST', '/client/request-otp', { token, body: { phone: famPhone, email: nurse } });
+    assert.equal(r.status, 409, JSON.stringify(r.body));
+    assert.equal(r.body.error.code, 'family_email_missing');
+    assert.ok(!memoryMailbox.some((m) => m.to === nurse && /access code/.test(m.subject)));
+  } finally {
+    config.clientCodeChannel = 'sms';
+  }
+
+  config.otpDailyLimit = 2;
+  try {
+    // Signing up again (which deletes the unfinished sign-up) no longer resets the phone's daily limit.
+    const target = phone();
+    const statuses = [];
+    for (let i = 0; i < 3; i++) {
+      const reg = await call('POST', '/auth/register', {
+        body: { fullName: 'Spam', phone: target, email: `spam+e2e${uniq}@example.com`, password: 'Passw0rd!', confirmPassword: 'Passw0rd!' },
+      });
+      statuses.push(reg.body.error?.code || reg.status);
+    }
+    assert.deepEqual(statuses, [201, 201, 'otp_daily_limit']);
+
+    // Using up one kind of code does not block another kind to the same address.
+    const email = `kinds+e2e${uniq}@example.com`;
+    const userId = await registerAndVerify({ email, phone: phone() });
+    for (let i = 0; i < 2; i++) assert.equal((await call('POST', '/auth/password/forgot', { body: { email } })).status, 200);
+    assert.equal((await call('POST', '/auth/password/forgot', { body: { email } })).status, 429);
+    const { issueOtp } = await import('../src/otp.js');
+    await issueOtp({ purpose: 'client_access', userId, phone: '+910000000000', email });
+  } finally {
+    config.otpDailyLimit = 0;
+  }
+
+  // A large sync is written in batches and keeps the order the app sent.
+  const famPhone = phone();
+  await createClient('Big Fam', famPhone);
+  const token = await login(emailA);
+  await verifyClient(token, famPhone);
+  const baby = { id: `big${uniq}`, name: 'Big' };
+  assert.equal((await call('PATCH', '/data/babies', { token, body: { upsert: [baby], order: [baby.id] } })).status, 200);
+  const path = `/data/babies/${baby.id}/records/feeding`;
+  const items = Array.from({ length: 1201 }, (_, i) => ({ id: `r${i}`, amount: i }));
+  let r = await call('PATCH', path, { token, body: { upsert: items, order: items.map((x) => x.id) } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const reversed = items.map((x) => x.id).reverse();
+  r = await call('PATCH', path, { token, body: { order: reversed, delete: ['r5', 'r600'] } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const got = (await call('GET', path, { token })).body.items.map((x) => x.id);
+  assert.deepEqual(got, reversed.filter((id) => id !== 'r5' && id !== 'r600'));
 });

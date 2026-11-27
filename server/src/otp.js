@@ -75,15 +75,16 @@ export async function issueOtp({ purpose, userId, clientId = null, phone, email 
     throw tooMany('otp_cooldown', `Please wait ${wait} second${wait === 1 ? '' : 's'} before requesting another code.`);
   }
 
-  // At most OTP_DAILY_LIMIT codes to the same email (or phone) in 24 hours, whoever asks and for
-  // whatever purpose: protects the parent's inbox and the sending account's daily quota.
+  // At most OTP_DAILY_LIMIT codes of one kind to the same email (or phone) in 24 hours, whoever
+  // asks: protects the inbox and the sending quota. Counted per kind, so spamming one kind (e.g.
+  // password reset) cannot block another (e.g. a nurse's access code).
   const limit = config.otpDailyLimit;
   if (limit > 0) {
     const [sent] = await authDb.query(
       `SELECT created_at, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), created_at + INTERVAL 1 DAY) AS frees_in
-         FROM otp_codes WHERE phone = ? AND created_at > UTC_TIMESTAMP() - INTERVAL 1 DAY
+         FROM otp_codes WHERE phone = ? AND purpose = ? AND created_at > UTC_TIMESTAMP() - INTERVAL 1 DAY
         ORDER BY id DESC LIMIT ?`,
-      [to, limit]
+      [to, purpose, limit]
     );
     if (sent.length >= limit) {
       // The oldest of the last `limit` codes leaves the 24-hour window first.

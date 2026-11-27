@@ -39,8 +39,9 @@ async function familyEmail(client) {
 }
 
 // Opens the client for this session, or first sends the family a code (by email or SMS).
-// `givenEmail`: the parent's email typed by the nurse, used only when the family has none yet;
-// it is saved once the parent's code proves it reached them.
+// `givenEmail`: the parent's email typed by the nurse, used only when the family has no email and
+// no baby records yet (the nurse could type their own email, so it must never open real records);
+// it is saved once the code is entered.
 async function openOrSendCode(req, res, client, status = 200, givenEmail = null) {
   const channel = config.clientCodeChannel;
   // Off, or this nurse already entered this family's code and the access is still active.
@@ -55,9 +56,15 @@ async function openOrSendCode(req, res, client, status = 200, givenEmail = null)
     });
     return res.status(status).json({ otpRequired: true, sentTo: 'phone', phoneMasked: maskPhone(client.phone), expiresInSeconds });
   }
-  const email = (await familyEmail(client)) || givenEmail;
+  let email = await familyEmail(client);
   if (!email) {
-    throw conflict('email_needed', "This family has no email yet. Enter the parent's email to send them a code.");
+    const [babies] = await clientsDb.query('SELECT 1 FROM babies WHERE client_id = ? LIMIT 1', [client.id]);
+    if (babies.length) {
+      throw conflict('family_email_missing',
+        'This family has no email on file. Ask the parent to sign up in the Cradlewell app, or write to care@cradlewell.com.');
+    }
+    if (!givenEmail) throw conflict('email_needed', "This family has no email yet. Enter the parent's email to send them a code.");
+    email = givenEmail;
   }
   const { expiresInSeconds } = await issueOtp({
     purpose: 'client_access', userId: req.auth.userId, clientId: client.id, phone: client.phone, email,
@@ -115,7 +122,7 @@ clientRouter.post('/verify-otp', limiter('otp-verify', 20), async (req, res) => 
   if (Number(otp.client_id) !== Number(client.id)) {
     throw forbidden('client_mismatch', 'This code was issued for a different client. Request a new code.');
   }
-  // The parent received the code there, so that email is theirs: use it for the next codes.
+  // Use that email for the next codes (never trusted for ownership: the nurse typed it).
   if (to.includes('@') && !client.email) {
     await clientsDb.query('UPDATE clients SET email = ? WHERE id = ? AND email IS NULL', [to, client.id]);
   }

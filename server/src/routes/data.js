@@ -13,6 +13,10 @@ const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 // The display order lists every id of a baby's records, so this must allow years of entries.
 const MAX_ITEMS = 100000;
 const MAX_ITEM_BYTES = 32 * 1024;
+// Rows written per SQL statement, so even the largest request is a few hundred statements
+// instead of one per item (which held a shared connection for minutes).
+const BATCH = 500;
+const batches = (list) => Array.from({ length: Math.ceil(list.length / BATCH) }, (_, i) => list.slice(i * BATCH, (i + 1) * BATCH));
 
 function parseChanges(body, { validateItem }) {
   const { upsert = [], delete: del = [], order = null } = body || {};
@@ -49,11 +53,13 @@ async function applyOrder(conn, table, whereSql, whereArgs, order) {
   if (!order) return;
   const wanted = positionsFrom(order);
   const [rows] = await conn.query(`SELECT id, position FROM ${table} WHERE ${whereSql}`, whereArgs);
-  for (const row of rows) {
-    const pos = wanted.get(row.id);
-    if (pos !== undefined && pos !== row.position) {
-      await conn.query(`UPDATE ${table} SET position = ? WHERE ${whereSql} AND id = ?`, [pos, ...whereArgs, row.id]);
-    }
+  const moved = rows.filter((r) => wanted.has(r.id) && wanted.get(r.id) !== r.position);
+  for (const part of batches(moved)) {
+    await conn.query(
+      `UPDATE ${table} SET position = CASE id ${part.map(() => 'WHEN ? THEN ?').join(' ')} END
+        WHERE ${whereSql} AND id IN (?)`,
+      [...part.flatMap((r) => [r.id, wanted.get(r.id)]), ...whereArgs, part.map((r) => r.id)]
+    );
   }
 }
 
@@ -105,17 +111,17 @@ dataRouter.patch('/babies', async (req, res) => {
       if (owned.some((b) => Number(b.client_id) !== Number(clientId))) {
         throw conflict('id_conflict', 'This baby could not be saved. Please try again.');
       }
-      for (const { id, item, json } of items) {
+      for (const part of batches(items)) {
         await conn.query(
-          `INSERT INTO babies (id, client_id, name, details, position) VALUES (?, ?, ?, ?, ?)
+          `INSERT INTO babies (id, client_id, name, details, position) VALUES ?
            ON DUPLICATE KEY UPDATE name = VALUES(name), details = VALUES(details), position = VALUES(position)`,
-          [id, clientId, item.name.trim(), json, pos.get(id) ?? 0]
+          [part.map(({ id, item, json }) => [id, clientId, item.name.trim(), json, pos.get(id) ?? 0])]
         );
       }
     }
-    if (del.length) {
-      // Deleting a baby also deletes its monitoring records (ON DELETE CASCADE).
-      await conn.query('DELETE FROM babies WHERE client_id = ? AND id IN (?)', [clientId, del]);
+    // Deleting a baby also deletes its monitoring records (ON DELETE CASCADE).
+    for (const part of batches(del)) {
+      await conn.query('DELETE FROM babies WHERE client_id = ? AND id IN (?)', [clientId, part]);
     }
     await applyOrder(conn, 'babies', 'client_id = ?', [clientId], order);
   });
@@ -150,18 +156,17 @@ dataRouter.patch('/babies/:babyId/records/:type', async (req, res) => {
   const pos = positionsFrom(order);
 
   await withTransaction(clientsDb, async (conn) => {
-    for (const { id, json } of items) {
+    for (const part of batches(items)) {
       await conn.query(
-        `INSERT INTO monitoring_records (baby_id, record_type, id, data, position, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO monitoring_records (baby_id, record_type, id, data, position, updated_by) VALUES ?
          ON DUPLICATE KEY UPDATE data = VALUES(data), position = VALUES(position), updated_by = VALUES(updated_by)`,
-        [babyId, type, id, json, pos.get(id) ?? 0, req.auth.userId]
+        [part.map(({ id, json }) => [babyId, type, id, json, pos.get(id) ?? 0, req.auth.userId])]
       );
     }
-    if (del.length) {
+    for (const part of batches(del)) {
       await conn.query(
         'DELETE FROM monitoring_records WHERE baby_id = ? AND record_type = ? AND id IN (?)',
-        [babyId, type, del]
+        [babyId, type, part]
       );
     }
     await applyOrder(conn, 'monitoring_records', 'baby_id = ? AND record_type = ?', [babyId, type], order);
