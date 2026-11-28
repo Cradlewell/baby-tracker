@@ -14,6 +14,9 @@
       }
     },
     "production": {
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://www.cradlewell.com/babytracker"
+      },
       "android": {
         "buildType": "app-bundle"
       },
