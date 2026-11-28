@@ -38,7 +38,7 @@ function runner(target) {
 if (!/^[a-z_][a-z0-9_]*$/.test(config.dbSchema)) throw new Error('DB_SCHEMA may only contain a-z, 0-9 and _');
 // Every connection starts in the app's schema.
 const pool = new pg.Pool({
-  connectionString: config.databaseUrl, ssl: dbSsl(), max: 10, options: `-c search_path=${config.dbSchema}`,
+  connectionString: config.databaseUrl, ssl: dbSsl(), max: Number(process.env.DB_POOL_MAX || 10), options: `-c search_path=${config.dbSchema}`,
 });
 
 export const db = runner(pool);
