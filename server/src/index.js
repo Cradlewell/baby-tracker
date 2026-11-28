@@ -6,7 +6,7 @@ import { authDb, clientsDb, closePools } from './db.js';
 await Promise.all([authDb.query('SELECT 1'), clientsDb.query('SELECT 1')]);
 
 const server = createApp().listen(config.port, () => {
-  console.log(`Cradlewell Bloom API listening on port ${config.port} (${config.env}, SMS: ${config.sms.provider})`);
+  console.log(`Cradlewell Baby Tracker API listening on port ${config.port} (${config.env}, SMS: ${config.sms.provider})`);
   if (config.env === 'production') return;
   console.log('Development mode: use HTTPS behind a reverse proxy before handling real users.');
 });

@@ -1,4 +1,4 @@
-# Cradlewell Bloom
+# Cradlewell Baby Tracker
 
 A newborn baby tracker for Android and iOS, built with Expo and React Native. Parents use it to log feeds, sleep, diapers, medicine, growth and vaccinations for one or more babies.
 

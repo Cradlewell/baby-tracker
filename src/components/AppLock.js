@@ -36,7 +36,7 @@ export async function biometricsAvailable() {
 async function askBiometrics() {
   try {
     const r = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Unlock Cradlewell Bloom',
+      promptMessage: 'Unlock Cradlewell Baby Tracker',
       cancelLabel: 'Use PIN',
       disableDeviceFallback: true,
     });
@@ -212,7 +212,7 @@ export function LockScreen({ onForgot }) {
       <PinPad
         C={C}
         title="Enter your PIN"
-        subtitle="Cradlewell Bloom is locked"
+        subtitle="Cradlewell Baby Tracker is locked"
         error={waiting ? `Too many wrong tries. Wait ${waitText(waitUntil - Date.now())}.` : error}
         disabled={waiting}
         onComplete={check}

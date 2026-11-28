@@ -3,7 +3,7 @@
 // Needs, from Google Cloud Console (APIs & Services > Credentials):
 //   EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID  the Web client ID: the token is issued for it
 //   EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID  the iOS client ID (iPhone only)
-// and an Android client ID for package com.cradlewell.bloom with the app's SHA-1 (no code needed).
+// and an Android client ID for package com.cradlewell.babytracker with the app's SHA-1 (no code needed).
 // The native module is not in Expo Go, so it is loaded defensively.
 let Google = null;
 try {

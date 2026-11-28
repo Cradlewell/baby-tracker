@@ -49,7 +49,7 @@ export default function SplashScreen({ navigation }) {
             />
           </View>
         </View>
-        <Text style={styles.appName}>Cradlewell Bloom</Text>
+        <Text style={styles.appName}>Cradlewell Baby Tracker</Text>
       </Animated.View>
       <Animated.View style={[styles.taglinePill, { opacity: tagOpacity }]}>
         <Text style={styles.tagline}>Your comfort is our care</Text>
@@ -96,6 +96,9 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHT.heavy,
     color: COLORS.white,
     letterSpacing: -0.8,
+    // The full name is wider than a small phone: it wraps onto two centred lines.
+    textAlign: 'center',
+    paddingHorizontal: 24,
   },
   taglinePill: {
     paddingHorizontal: 18,

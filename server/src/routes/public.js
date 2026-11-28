@@ -6,7 +6,7 @@ import { limiter } from '../rateLimit.js';
 // app's crash reports.
 export const publicRouter = Router();
 
-const APP = 'Cradlewell Bloom';
+const APP = 'Cradlewell Baby Tracker';
 const SUPPORT = 'care@cradlewell.com';
 const UPDATED = '27 November 2026';
 

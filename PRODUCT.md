@@ -15,7 +15,7 @@ Both log care in short moments, often one-handed, often at night, sometimes offl
 
 ## Product Purpose
 
-Cradlewell Bloom records a newborn's daily care so the people looking after the baby see the same, current picture: feeds, sleep, diapers, medicine, growth and vaccinations. Success is a log that is quick to fill in during care, and a record a nurse or parent can trust and hand on.
+Cradlewell Baby Tracker records a newborn's daily care so the people looking after the baby see the same, current picture: feeds, sleep, diapers, medicine, growth and vaccinations. Success is a log that is quick to fill in during care, and a record a nurse or parent can trust and hand on.
 
 ## Positioning
 
@@ -38,7 +38,7 @@ Care records belong to the client (the family), not to one nurse: any nurse can 
 
 ## Brand Commitments
 
-- Name: **Cradlewell Bloom** (brand wordmark: Cradlewell). Tagline: "Your comfort is our care".
+- Name: **Cradlewell Baby Tracker** (brand wordmark: Cradlewell). Tagline: "Your comfort is our care".
 - **Official brand guidelines** (Cradlewell Brand Representation and Color Scheme PDFs, supplied by the user) are binding:
   - Design direction "Nurturing Womb"; colour "Lavender Fields".
   - Colours: **#6388FF** (Pantone 2718 C) and **#5F47FF** (Pantone 2725 C).
@@ -49,7 +49,7 @@ Care records belong to the client (the family), not to one nurse: any nurse can 
 - **Three colours only** (confirmed by the user): #6388FF, #5F47FF and navy #1B1F2E, plus lighter and darker shades of these; no other hues.
 - Contrast rules: white on #5F47FF is 5.5:1 (buttons, small text, active states); white on #6388FF is 3.2:1 (large bold text, backgrounds and the gradient only); navy on white is 16.4:1 (body text).
 - Care types (feed, sleep, diaper, medicine, growth, vaccine) are told apart by icon and label, not by colour. Warnings use the brand colours plus a warning icon, not a separate red.
-- Open: the brand wordmark reads "Cradlewell"; the app is currently named "Cradlewell Bloom".
+- Open: the brand wordmark reads "Cradlewell"; the app is named "Cradlewell Baby Tracker".
 - There is no "Clear All Data" option in the app: carers must not be able to wipe a client's records from a phone (confirmed by the user).
 
 ## Evidence on Hand

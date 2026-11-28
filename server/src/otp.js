@@ -19,8 +19,8 @@ function sameHash(a, b) {
 }
 
 const MESSAGES = {
-  registration: (code) => `Your Cradlewell Bloom verification code is ${code}. It expires in 5 minutes. Do not share it.`,
-  client_access: (code) => `Cradlewell Bloom: ${code} is the code to give your caregiver access to your baby's records. It expires in 5 minutes. Only share it if you asked for this.`,
+  registration: (code) => `Your Cradlewell Baby Tracker verification code is ${code}. It expires in 5 minutes. Do not share it.`,
+  client_access: (code) => `Cradlewell Baby Tracker: ${code} is the code to give your caregiver access to your baby's records. It expires in 5 minutes. Only share it if you asked for this.`,
 };
 
 // Codes sent by email.
@@ -44,15 +44,15 @@ Cradlewell`,
 </div>`,
   }),
   password_reset: (code) => ({
-    subject: `${code} is your Cradlewell Bloom password reset code`,
-    text: `Your Cradlewell Bloom password reset code is ${code}.\n\nIt expires in 5 minutes. Enter it in the app to choose a new password.\n\nIf you did not ask to reset your password, you can ignore this email: your password stays the same.\n\nCradlewell Bloom · care@cradlewell.com`,
+    subject: `${code} is your Cradlewell Baby Tracker password reset code`,
+    text: `Your Cradlewell Baby Tracker password reset code is ${code}.\n\nIt expires in 5 minutes. Enter it in the app to choose a new password.\n\nIf you did not ask to reset your password, you can ignore this email: your password stays the same.\n\nCradlewell Baby Tracker · care@cradlewell.com`,
     html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;color:#1B1F2E">
   <h2 style="color:#5B4BB7;margin:0 0 12px">Reset your password</h2>
-  <p>Use this code in the Cradlewell Bloom app to choose a new password:</p>
+  <p>Use this code in the Cradlewell Baby Tracker app to choose a new password:</p>
   <p style="font-size:32px;font-weight:bold;letter-spacing:8px;margin:16px 0;color:#1B1F2E">${code}</p>
   <p>It expires in 5 minutes.</p>
   <p style="color:#5A6690;font-size:13px">If you did not ask to reset your password, you can ignore this email: your password stays the same.</p>
-  <p style="color:#5A6690;font-size:13px">Cradlewell Bloom · care@cradlewell.com</p>
+  <p style="color:#5A6690;font-size:13px">Cradlewell Baby Tracker · care@cradlewell.com</p>
 </div>`,
   }),
 };

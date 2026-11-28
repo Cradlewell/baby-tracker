@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { API_URL } from '../lib/api';
 
 // Facts about the app shown in Settings, About and the privacy policy. Change them here only.
-export const APP_NAME = 'Cradlewell Bloom';
+export const APP_NAME = 'Cradlewell Baby Tracker';
 export const APP_VERSION = Constants.expoConfig?.version || '2.0.0';
 export const SUPPORT_EMAIL = 'care@cradlewell.com';
 // Public web pages served by the Cradlewell server. Give these links in the Play Console:

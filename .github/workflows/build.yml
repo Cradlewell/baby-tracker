@@ -1,4 +1,4 @@
-name: Build Cradlewell Bloom
+name: Build Cradlewell Baby Tracker
 
 on:
   push:

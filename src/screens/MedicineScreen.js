@@ -85,7 +85,7 @@ export default function MedicineScreen({ navigation }) {
       } else if (!count) {
         Alert.alert(
           'Reminder not set',
-          'Allow notifications for Cradlewell Bloom in your phone settings to hear a sound when the next dose is due. The countdown is still shown here.'
+          'Allow notifications for Cradlewell Baby Tracker in your phone settings to hear a sound when the next dose is due. The countdown is still shown here.'
         );
       }
     } else {

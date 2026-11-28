@@ -2,7 +2,7 @@
   "name": "cradlewell-bloom-server",
   "version": "1.0.0",
   "private": true,
-  "description": "Authentication, client verification and monitoring-data API for Cradlewell Bloom",
+  "description": "Authentication, client verification and monitoring-data API for Cradlewell Baby Tracker",
   "type": "module",
   "main": "src/index.js",
   "engines": {

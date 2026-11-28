@@ -127,7 +127,7 @@ export default function VaccinationScreen({ navigation }) {
     } else if (!count && upcoming.length) {
       Alert.alert(
         'Reminders not set',
-        'Allow notifications for Cradlewell Bloom in your phone settings to hear a sound when a vaccine is due.'
+        'Allow notifications for Cradlewell Baby Tracker in your phone settings to hear a sound when a vaccine is due.'
       );
       return;
     }

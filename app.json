@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Cradlewell Bloom",
+    "name": "Cradlewell Baby Tracker",
     "slug": "cradlewell-bloom",
     "version": "2.0.0",
     "orientation": "portrait",
@@ -21,18 +21,19 @@
       [
         "expo-local-authentication",
         {
-          "faceIDPermission": "Allow Cradlewell Bloom to use Face ID to unlock the app."
+          "faceIDPermission": "Allow Cradlewell Baby Tracker to use Face ID to unlock the app."
         }
       ]
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.cradlewell.bloom",
+      "bundleIdentifier": "com.cradlewell.babytracker",
       "buildNumber": "1"
     },
     "android": {
-      "package": "com.cradlewell.bloom",
+      "package": "com.cradlewell.babytracker",
       "versionCode": 1,
+      "allowBackup": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#EEF2FF"

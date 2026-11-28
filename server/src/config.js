@@ -34,9 +34,9 @@ const otpSecret = required('OTP_SECRET');
 if (otpSecret.length < 32) throw new Error('OTP_SECRET must be at least 32 characters long');
 
 const smsProvider = (process.env.SMS_PROVIDER || 'console').toLowerCase();
-if (env === 'production' && process.env.OTP_ENABLED === 'true' && smsProvider !== 'twilio') {
-  // Console/memory providers print or keep codes in memory: never acceptable for real users.
-  throw new Error('SMS_PROVIDER must be "twilio" when NODE_ENV=production and OTP_ENABLED=true');
+if (env === 'production' && (process.env.OTP_ENABLED === 'true' || clientCodeChannel === 'sms')) {
+  // There is no real SMS sender: codes would only be printed, never reach the phone.
+  throw new Error('SMS codes are not available in production: set OTP_ENABLED=false and CLIENT_CODE_CHANNEL=email');
 }
 
 // Password reset codes always go by email, so real users need a real mailbox.
@@ -87,7 +87,7 @@ export const config = {
 
   email: {
     provider: emailProvider,
-    from: process.env.EMAIL_FROM || 'Cradlewell Bloom <care@cradlewell.com>',
+    from: process.env.EMAIL_FROM || 'Cradlewell Baby Tracker <care@cradlewell.com>',
     smtp: {
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT || 465),
@@ -100,11 +100,5 @@ export const config = {
 
   sms: {
     provider: smsProvider,
-    twilio: {
-      accountSid: process.env.TWILIO_ACCOUNT_SID,
-      authToken: process.env.TWILIO_AUTH_TOKEN,
-      from: process.env.TWILIO_FROM_NUMBER,
-      messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
-    },
   },
 };

@@ -1,4 +1,4 @@
-# Cradlewell Bloom API
+# Cradlewell Baby Tracker API
 
 Backend for login, client verification and the baby monitoring records. The mobile app talks only to this API; it never connects to the database (Supabase) directly.
 
@@ -12,7 +12,7 @@ Registration → OTP to own phone → Login (email + password)
 - Node.js 22.13 or newer
 - A Supabase project (PostgreSQL). Host the API in the same region as the database: every
   request makes several queries, so the distance between them is what makes the app fast or slow.
-- Real email (SMTP) for access and password-reset codes; SMS (Twilio) only if you switch SMS codes on
+- Real email (SMTP) for access and password-reset codes (there is no SMS sender; SMS codes work only in development)
 
 ## Set up
 
@@ -84,7 +84,7 @@ EXPO_PUBLIC_API_URL=https://api.example.com npx expo start
 - Every data request is limited to the client opened in that session. Any logged-in nurse can open any client by its phone number, so only give accounts to staff.
 - Logout revokes the session on the server; the app also deletes its token and cached client data.
 - The app keeps the token in the iOS Keychain / Android Keystore.
-- **Production:** serve the API over HTTPS only (for example behind nginx or a cloud load balancer, with `TRUST_PROXY=1`), set `NODE_ENV=production`, and use `SMS_PROVIDER=twilio`.
+- **Production:** serve the API over HTTPS only (for example behind nginx or a cloud load balancer, with `TRUST_PROXY=1`), set `NODE_ENV=production`, `OTP_ENABLED=false` and `CLIENT_CODE_CHANNEL=email`.
 
 ## Tests
 
